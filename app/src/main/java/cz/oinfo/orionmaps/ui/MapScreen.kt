@@ -264,6 +264,7 @@ fun InteractiveMap(
                 context.contentResolver.openOutputStream(it)?.use { output ->
                     output.write(gpxString.toByteArray())
                 }
+                viewModel.clearRecordedTrack()
                 triggerNotification("Track saved successfully")
             } catch (e: Exception) {
                 triggerNotification("Error saving track")
@@ -330,6 +331,44 @@ fun InteractiveMap(
         -compassBearing
     } else {
         rotation
+    }
+
+    val trackPath = remember(recordedTrack, containerSize, georeference) {
+        val path = androidx.compose.ui.graphics.Path()
+        if (georeference != null && containerSize.width > 0) {
+            val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            val containerRatio = containerSize.width.toFloat() / containerSize.height.toFloat()
+
+            val renderedWidth: Float
+            val renderedHeight: Float
+            val renderOffsetX: Float
+            val renderOffsetY: Float
+
+            if (imgRatio > containerRatio) {
+                renderedWidth = containerSize.width.toFloat()
+                renderedHeight = containerSize.width.toFloat() / imgRatio
+                renderOffsetX = 0f
+                renderOffsetY = (containerSize.height.toFloat() - renderedHeight) / 2f
+            } else {
+                renderedHeight = containerSize.height.toFloat()
+                renderedWidth = containerSize.height.toFloat() * imgRatio
+                renderOffsetX = (containerSize.width.toFloat() - renderedWidth) / 2f
+                renderOffsetY = 0f
+            }
+
+            recordedTrack.forEachIndexed { index, loc ->
+                val percentPos = getMapPercentages(loc, georeference)
+                val x = renderOffsetX + percentPos.first * renderedWidth
+                val y = renderOffsetY + percentPos.second * renderedHeight
+
+                if (index == 0) {
+                    path.moveTo(x, y)
+                } else {
+                    path.lineTo(x, y)
+                }
+            }
+        }
+        path
     }
 
     // Effect to handle map centering in FOLLOW mode
@@ -444,63 +483,30 @@ fun InteractiveMap(
                     }
             ) {
             // Recorded Track Rendering
-            if (showRecordedTrack && recordedTrack.isNotEmpty() && georeference != null) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                            translationX = offset.x
-                            translationY = offset.y
-                            scaleX = scale
-                            scaleY = scale
-                            rotationZ = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) effectiveRotation else rotation
-                        }
-                ) {
-                    val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
-                    val containerRatio = size.width / size.height
-
-                    val renderedWidth: Float
-                    val renderedHeight: Float
-                    val renderOffsetX: Float
-                    val renderOffsetY: Float
-
-                    if (imgRatio > containerRatio) {
-                        renderedWidth = size.width
-                        renderedHeight = size.width / imgRatio
-                        renderOffsetX = 0f
-                        renderOffsetY = (size.height - renderedHeight) / 2f
-                    } else {
-                        renderedHeight = size.height
-                        renderedWidth = size.height * imgRatio
-                        renderOffsetX = (size.width - renderedWidth) / 2f
-                        renderOffsetY = 0f
+        if (showRecordedTrack && !trackPath.isEmpty) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                        translationX = offset.x
+                        translationY = offset.y
+                        scaleX = scale
+                        scaleY = scale
+                        rotationZ = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) effectiveRotation else rotation
                     }
-
-                    val path = androidx.compose.ui.graphics.Path()
-                    recordedTrack.forEachIndexed { index, loc ->
-                        val percentPos = getMapPercentages(loc, georeference)
-                        val x = renderOffsetX + percentPos.first * renderedWidth
-                        val y = renderOffsetY + percentPos.second * renderedHeight
-                        
-                        if (index == 0) {
-                            path.moveTo(x, y)
-                        } else {
-                            path.lineTo(x, y)
-                        }
-                    }
-
-                    drawPath(
-                        path = path,
-                        color = Color.Magenta.copy(alpha = 0.7f),
-                        style = Stroke(
-                            width = 4.dp.toPx(),
-                            cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                            join = androidx.compose.ui.graphics.StrokeJoin.Round
-                        )
+            ) {
+                drawPath(
+                    path = trackPath,
+                    color = Color.Magenta.copy(alpha = 0.7f),
+                    style = Stroke(
+                        width = 8f / scale,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
                     )
-                }
+                )
             }
+        }
 
             // Directional Marker
                 Canvas(

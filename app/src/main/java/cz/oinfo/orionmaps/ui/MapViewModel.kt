@@ -541,6 +541,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         _showRecordedTrack.value = show
     }
 
+    fun clearRecordedTrack() {
+        _recordedTrack.value = emptyList()
+    }
+
     fun clearTrack() {
         _recordedTrack.value = emptyList()
     }
