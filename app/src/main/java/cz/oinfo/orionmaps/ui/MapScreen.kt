@@ -787,7 +787,6 @@ fun GpxMenuFab(
                 onClick = {
                     if (isRecording) {
                         viewModel.stopRecording()
-                        onExportClick()
                     } else {
                         viewModel.startRecording()
                     }
@@ -825,6 +824,15 @@ fun GpxMenuFab(
                 },
                 enabled = !isRecording && hasRecordedData,
                 leadingIcon = { Icon(Icons.Default.Save, contentDescription = null) }
+            )
+
+            DropdownMenuItem(
+                text = { Text("Load GPX") },
+                onClick = {
+                    onLoadClick()
+                    expanded = false
+                },
+                leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) }
             )
 
             DropdownMenuItem(

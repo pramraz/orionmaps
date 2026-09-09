@@ -541,7 +541,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     fun startRecording() {
         _isRecording.value = true
         _isTrackSaved.value = false
-        _recordedTrack.value = emptyList()
     }
 
     fun stopRecording() {
