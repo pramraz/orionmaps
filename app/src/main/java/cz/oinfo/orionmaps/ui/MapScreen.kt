@@ -22,6 +22,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun MapScreen(
@@ -78,15 +81,34 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, rotate ->
+                detectTransformGestures { centroid, pan, zoom, rotate ->
+                    // Requirement 2: Fix Pivot Point for Zoom & Rotation (Centroid math)
+                    
+                    // 1. Calculate the change in scale
+                    val oldScale = scale
                     scale *= zoom
-                    // Limit scale to prevent too much zooming
-                    scale = scale.coerceIn(0.5f, 10f)
+                    scale = scale.coerceIn(0.5f, 15f) // Increased max scale for high-res map
                     
+                    // 2. Adjust offset for Zoom around Centroid
+                    // The formula: offset = (offset - centroid) * (newScale / oldScale) + centroid
+                    // But since we are accumulating 'offset', we add the delta.
+                    val zoomFactor = scale / oldScale
+                    offset = (offset - centroid) * zoomFactor + centroid
+                    
+                    // 3. Adjust offset for Rotation around Centroid
                     rotation += rotate
+                    val rotationRad = rotate * (PI.toFloat() / 180f)
+                    val cosR = cos(rotationRad)
+                    val sinR = sin(rotationRad)
                     
-                    // Pan should be adjusted by scale and rotation if we want it to feel "natural"
-                    // but for a basic implementation, simple addition works.
+                    val relativeCentroid = centroid - offset
+                    val rotatedCentroid = Offset(
+                        relativeCentroid.x * cosR - relativeCentroid.y * sinR,
+                        relativeCentroid.x * sinR + relativeCentroid.y * cosR
+                    )
+                    offset += relativeCentroid - rotatedCentroid
+
+                    // 4. Apply Pan
                     offset += pan
                 }
             }
@@ -96,6 +118,8 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             contentDescription = "PDF Map",
             modifier = Modifier
                 .fillMaxSize()
+                // Requirement 1: White Background
+                .background(Color.White)
                 .graphicsLayer(
                     scaleX = scale,
                     scaleY = scale,

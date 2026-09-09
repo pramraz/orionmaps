@@ -2,6 +2,8 @@ package cz.oinfo.orionmaps.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -42,13 +44,18 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 if (renderer.pageCount > 0) {
                     page = renderer.openPage(0)
                     
-                    // Calculate dimensions for a high-resolution bitmap
-                    // Aiming for a reasonable size while balancing memory (e.g., 2048px on the longest side)
-                    val scaleFactor = 2048f / maxOf(page.width, page.height).coerceAtLeast(1)
+                    // Requirement 3: High-Resolution Rendering
+                    // Using a 4.0x scale factor for crisp rendering
+                    val scaleFactor = 4.0f
                     val width = (page.width * scaleFactor).toInt()
                     val height = (page.height * scaleFactor).toInt()
 
                     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    
+                    // Ensure white background (Requirement 1 - rendering level)
+                    val canvas = Canvas(bitmap)
+                    canvas.drawColor(Color.WHITE)
+
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     return@withContext bitmap
                 }
