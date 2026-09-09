@@ -3,10 +3,13 @@ package cz.oinfo.orionmaps.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -22,9 +25,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 enum class GestureMode {
     ALL, LOCK_ROTATION, LOCK_ZOOM
@@ -82,9 +91,10 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
     var rotation by remember { mutableStateOf(0f) }
     
     var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
-    
     var notificationText by remember { mutableStateOf("") }
     var showNotification by remember { mutableStateOf(false) }
+
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(notificationText, showNotification) {
         if (showNotification) {
@@ -101,31 +111,41 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .onGloballyPositioned { containerSize = it.size }
+            .pointerInput(gestureMode) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
                     val effectiveZoom = if (gestureMode == GestureMode.LOCK_ZOOM) 1f else zoom
                     val effectiveRotation = if (gestureMode == GestureMode.LOCK_ROTATION) 0f else rotate
 
-                    val angleInRadians = effectiveRotation * Math.PI / 180.0
-                    val cos = kotlin.math.cos(angleInRadians).toFloat()
-                    val sin = kotlin.math.sin(angleInRadians).toFloat()
-
-                    val x = centroid.x - offset.x
-                    val y = centroid.y - offset.y
-
-                    val rotatedX = x * cos - y * sin
-                    val rotatedY = x * sin + y * cos
-
-                    val scaledX = rotatedX * effectiveZoom
-                    val scaledY = rotatedY * effectiveZoom
-
-                    offset = Offset(
-                        x = offset.x + pan.x + x - scaledX,
-                        y = offset.y + pan.y + y - scaledY
-                    )
+                    // Precise Centroid Anchoring Math
+                    // We need to keep the point under the centroid (fingers) fixed relative to the map content.
                     
-                    scale = (scale * effectiveZoom).coerceIn(1f, 10f)
-                    rotation += effectiveRotation
+                    val oldScale = scale
+                    scale = (scale * effectiveZoom).coerceIn(1f, 15f)
+                    val scaleFactor = scale / oldScale
+
+                    // 1. Apply Pan
+                    offset += pan
+
+                    // 2. Adjust offset for Zoom around Centroid
+                    // The point under 'centroid' should stay at the same coordinate on the map.
+                    // offset = centroid - (centroid - offset) * scaleFactor
+                    offset = centroid - (centroid - offset) * scaleFactor
+
+                    // 3. Adjust offset for Rotation around Centroid
+                    if (effectiveRotation != 0f) {
+                        val angleRad = effectiveRotation * (PI.toFloat() / 180f)
+                        val cosA = cos(angleRad)
+                        val sinA = sin(angleRad)
+
+                        val relativeCentroid = offset - centroid
+                        val rotatedOffset = Offset(
+                            relativeCentroid.x * cosA - relativeCentroid.y * sinA,
+                            relativeCentroid.x * sinA + relativeCentroid.y * cosA
+                        )
+                        offset = rotatedOffset + centroid
+                        rotation += effectiveRotation
+                    }
                 }
             }
     ) {
@@ -135,13 +155,13 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.White)
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    rotationZ = rotation,
-                    translationX = offset.x,
+                .graphicsLayer {
+                    translationX = offset.x
                     translationY = offset.y
-                )
+                    scaleX = scale
+                    scaleY = scale
+                    rotationZ = rotation
+                }
         )
 
         // Custom Notification Overlay
@@ -174,17 +194,52 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Reset Button
-            SmallFloatingActionButton(
-                onClick = {
+            // Long-Press Reset Button with Indicator
+            var isPressingReset by remember { mutableStateOf(false) }
+            val resetProgress by animateFloatAsState(
+                targetValue = if (isPressingReset) 1f else 0f,
+                animationSpec = tween(durationMillis = 1000),
+                label = "ResetProgress"
+            )
+
+            if (resetProgress == 1f && isPressingReset) {
+                LaunchedEffect(Unit) {
                     scale = 1f
                     rotation = 0f
                     offset = Offset.Zero
                     triggerNotification("Map Reset")
-                },
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Reset Map")
+                    isPressingReset = false
+                }
+            }
+
+            Box(contentAlignment = Alignment.Center) {
+                if (isPressingReset) {
+                    CircularProgressIndicator(
+                        progress = { resetProgress },
+                        modifier = Modifier.size(48.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 4.dp,
+                    )
+                }
+                
+                SmallFloatingActionButton(
+                    onClick = { /* Long press handled by pointerInput */ },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                isPressingReset = true
+                                try {
+                                    awaitRelease()
+                                } finally {
+                                    isPressingReset = false
+                                }
+                            }
+                        )
+                    }
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reset Map (Long Press)")
+                }
             }
 
             // Mode Toggle Button
@@ -203,8 +258,8 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
                 },
                 containerColor = when (gestureMode) {
                     GestureMode.ALL -> MaterialTheme.colorScheme.primaryContainer
-                    GestureMode.LOCK_ROTATION -> Color(0xFFF44336) // Red for Lock Rotation
-                    GestureMode.LOCK_ZOOM -> Color(0xFFFF9800) // Orange for Lock Zoom
+                    GestureMode.LOCK_ROTATION -> Color(0xFFF44336) // Red
+                    GestureMode.LOCK_ZOOM -> Color(0xFFFF9800) // Orange
                 }
             ) {
                 val icon = when (gestureMode) {
