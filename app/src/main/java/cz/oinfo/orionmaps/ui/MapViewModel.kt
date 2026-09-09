@@ -40,6 +40,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val _recentMaps = MutableStateFlow<List<RecentMap>>(emptyList())
     val recentMaps = _recentMaps.asStateFlow()
 
+    private val _keepScreenOn = MutableStateFlow(sharedPreferences.getBoolean("keep_screen_on", true))
+    val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
+
+    private val _showOverLockScreen = MutableStateFlow(sharedPreferences.getBoolean("show_over_lock_screen", true))
+    val showOverLockScreen: StateFlow<Boolean> = _showOverLockScreen.asStateFlow()
+
     private val _currentLocation = MutableStateFlow<Location?>(null)
     val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
 
@@ -231,6 +237,16 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     fun clearRecentMaps() {
         _recentMaps.value = emptyList()
         sharedPreferences.edit().remove("maps_json").apply()
+    }
+
+    fun setKeepScreenOn(enabled: Boolean) {
+        _keepScreenOn.value = enabled
+        sharedPreferences.edit().putBoolean("keep_screen_on", enabled).apply()
+    }
+
+    fun setShowOverLockScreen(enabled: Boolean) {
+        _showOverLockScreen.value = enabled
+        sharedPreferences.edit().putBoolean("show_over_lock_screen", enabled).apply()
     }
 
     fun clearMap() {

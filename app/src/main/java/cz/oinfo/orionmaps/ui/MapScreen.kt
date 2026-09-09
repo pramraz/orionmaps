@@ -1,6 +1,8 @@
 package cz.oinfo.orionmaps.ui
 
 import android.Manifest
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -55,9 +57,24 @@ fun MapScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val recentMaps by viewModel.recentMaps.collectAsState()
+    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     var showRecentMapsDialog by remember { mutableStateOf(false) }
+    var showAppSettingsDialog by remember { mutableStateOf(false) }
     
     val context = LocalContext.current
+
+    // Handle Keep Screen On
+    DisposableEffect(keepScreenOn) {
+        val window = (context as? ComponentActivity)?.window
+        if (keepScreenOn) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -128,6 +145,7 @@ fun MapScreen(
                     georeference = state.georeference,
                     onOpenNewPdfMap = { launcher.launch(arrayOf("application/pdf")) },
                     onOpenNewKmzMap = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) },
+                    onOpenAppSettings = { showAppSettingsDialog = true },
                     viewModel = viewModel
                 )
             }
@@ -172,6 +190,13 @@ fun MapScreen(
                 viewModel = viewModel
             )
         }
+
+        if (showAppSettingsDialog) {
+            AppSettingsDialog(
+                onDismiss = { showAppSettingsDialog = false },
+                viewModel = viewModel
+            )
+        }
     }
 }
 
@@ -181,6 +206,7 @@ fun InteractiveMap(
     georeference: MapGeoreference?,
     onOpenNewPdfMap: () -> Unit,
     onOpenNewKmzMap: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     viewModel: MapViewModel
 ) {
     var scale by remember { mutableStateOf(1f) }
@@ -405,6 +431,14 @@ fun InteractiveMap(
                         },
                         leadingIcon = { Icon(Icons.Default.History, contentDescription = null) }
                     )
+                    DropdownMenuItem(
+                        text = { Text("App settings") },
+                        onClick = {
+                            onOpenAppSettings()
+                            showSettingsMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Default.SettingsSuggest, contentDescription = null) }
+                    )
                 }
             }
 
@@ -450,6 +484,80 @@ fun InteractiveMap(
                     },
                     viewModel = viewModel
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun AppSettingsDialog(
+    onDismiss: () -> Unit,
+    viewModel: MapViewModel
+) {
+    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
+    val showOverLockScreen by viewModel.showOverLockScreen.collectAsState()
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "App Settings",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Keep screen on", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "Prevent display from turning off",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = keepScreenOn,
+                        onCheckedChange = { viewModel.setKeepScreenOn(it) }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Show over lock screen", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "Show app without unlocking phone",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = showOverLockScreen,
+                        onCheckedChange = { viewModel.setShowOverLockScreen(it) }
+                    )
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Close")
+                }
             }
         }
     }
