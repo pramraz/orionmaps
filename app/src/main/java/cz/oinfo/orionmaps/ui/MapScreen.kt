@@ -55,7 +55,14 @@ fun MapScreen(
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
-            uri?.let { viewModel.loadPdf(it) }
+            uri?.let { 
+                val fileName = viewModel.getFileName(it) ?: ""
+                if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                    viewModel.loadKmz(it)
+                } else {
+                    viewModel.loadPdf(it)
+                }
+            }
         }
     )
 
@@ -68,8 +75,8 @@ fun MapScreen(
         when (val state = uiState) {
             is MapUiState.Empty -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                        Text("Open new PDF map")
+                    Button(onClick = { launcher.launch(arrayOf("application/pdf", "application/vnd.google-earth.kmz")) }) {
+                        Text("Open Map (PDF/KMZ)")
                     }
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -88,7 +95,7 @@ fun MapScreen(
             is MapUiState.Success -> {
                 InteractiveMap(
                     bitmap = state.bitmap,
-                    onOpenNewMap = { launcher.launch(arrayOf("application/pdf")) },
+                    onOpenNewMap = { launcher.launch(arrayOf("application/pdf", "application/vnd.google-earth.kmz")) },
                     viewModel = viewModel
                 )
             }
@@ -96,7 +103,7 @@ fun MapScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = state.message, color = MaterialTheme.colorScheme.error)
                     Button(
-                        onClick = { launcher.launch(arrayOf("application/pdf")) },
+                        onClick = { launcher.launch(arrayOf("application/pdf", "application/vnd.google-earth.kmz")) },
                         modifier = Modifier.padding(top = 16.dp)
                     ) {
                         Text("Try Again")
@@ -118,7 +125,13 @@ fun MapScreen(
             RecentMapsDialog(
                 onDismiss = { showRecentMapsDialog = false },
                 onMapSelected = { uriString ->
-                    viewModel.loadPdf(android.net.Uri.parse(uriString))
+                    val uri = android.net.Uri.parse(uriString)
+                    val fileName = viewModel.getFileName(uri) ?: ""
+                    if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                        viewModel.loadKmz(uri)
+                    } else {
+                        viewModel.loadPdf(uri)
+                    }
                     showRecentMapsDialog = false
                 },
                 viewModel = viewModel
@@ -270,7 +283,7 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.SettingsBackupRestore, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Open new PDF map") },
+                        text = { Text("Open new map") },
                         onClick = {
                             onOpenNewMap()
                             showSettingsMenu = false

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
@@ -20,8 +21,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.zip.ZipInputStream
 
 data class RecentMap(val uriString: String, val name: String)
+
+data class MapGeoreference(val north: Double, val south: Double, val east: Double, val west: Double)
 
 class MapViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -56,11 +60,80 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 addRecentMap(uri)
             } else {
                 _uiState.value = MapUiState.Error("Failed to render PDF")
-                // If it fails, we might want to return to Empty state if it was an auto-load
-                // For now, Success or Error is fine, but if we want to show Empty screen on failure:
-                // _uiState.value = MapUiState.Empty
             }
         }
+    }
+
+    fun loadKmz(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                getApplication<Application>().contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            _uiState.value = MapUiState.Loading
+            
+            withContext(Dispatchers.IO) {
+                try {
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { inputStream ->
+                        ZipInputStream(inputStream).use { zipInputStream ->
+                            var bitmap: Bitmap? = null
+                            var georeference: MapGeoreference? = null
+                            
+                            var entry = zipInputStream.nextEntry
+                            while (entry != null) {
+                                when {
+                                    entry.name.endsWith(".png", ignoreCase = true) || entry.name.endsWith(".jpg", ignoreCase = true) -> {
+                                        bitmap = BitmapFactory.decodeStream(zipInputStream)
+                                    }
+                                    entry.name.endsWith(".kml", ignoreCase = true) -> {
+                                        val kmlContent = zipInputStream.bufferedReader().readText()
+                                        georeference = parseKmlGeoreference(kmlContent)
+                                    }
+                                }
+                                entry = zipInputStream.nextEntry
+                            }
+
+                            if (bitmap != null) {
+                                _uiState.value = MapUiState.Success(bitmap, georeference)
+                                withContext(Dispatchers.Main) {
+                                    addRecentMap(uri)
+                                }
+                            } else {
+                                _uiState.value = MapUiState.Error("No image found in KMZ")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    _uiState.value = MapUiState.Error("Failed to load KMZ: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun parseKmlGeoreference(kml: String): MapGeoreference? {
+        return try {
+            val north = extractCoord(kml, "north")
+            val south = extractCoord(kml, "south")
+            val east = extractCoord(kml, "east")
+            val west = extractCoord(kml, "west")
+            
+            if (north != null && south != null && east != null && west != null) {
+                MapGeoreference(north, south, east, west)
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun extractCoord(kml: String, tag: String): Double? {
+        val regex = "<$tag>\\s*([-+]?[0-9]*\\.?[0-9]+)\\s*</$tag>".toRegex()
+        return regex.find(kml)?.groupValues?.get(1)?.toDoubleOrNull()
     }
 
     private fun addRecentMap(uri: Uri) {
@@ -77,7 +150,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         saveRecentMaps(newList)
     }
 
-    private fun getFileName(uri: Uri): String? {
+    fun getFileName(uri: Uri): String? {
         var result: String? = null
         if (uri.scheme == "content") {
             val cursor = getApplication<Application>().contentResolver.query(uri, null, null, null, null)
@@ -127,7 +200,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Requirement: Open last opened map
                 if (maps.isNotEmpty()) {
-                    loadPdf(Uri.parse(maps[0].uriString))
+                    val lastUri = Uri.parse(maps[0].uriString)
+                    val fileName = getFileName(lastUri) ?: ""
+                    if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                        loadKmz(lastUri)
+                    } else {
+                        loadPdf(lastUri)
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -183,6 +262,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 sealed class MapUiState {
     object Empty : MapUiState()
     object Loading : MapUiState()
-    data class Success(val bitmap: Bitmap) : MapUiState()
+    data class Success(val bitmap: Bitmap, val georeference: MapGeoreference? = null) : MapUiState()
     data class Error(val message: String) : MapUiState()
 }
