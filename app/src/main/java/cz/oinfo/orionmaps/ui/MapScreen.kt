@@ -271,6 +271,17 @@ fun InteractiveMap(
             }
         }
     }
+
+    val loadGpxLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            val fileName = viewModel.getFileName(it) ?: ""
+            if (fileName.endsWith(".gpx", ignoreCase = true)) {
+                viewModel.importGpx(it)
+            }
+        }
+    }
     
     var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
 
@@ -661,7 +672,7 @@ fun InteractiveMap(
                     GpxMenuFab(
                         viewModel = viewModel,
                         onExportClick = { createGpxLauncher.launch("orion_track.gpx") },
-                        onLoadClick = { /* PDF/KMZ logic is already top-level */ }
+                        onLoadClick = { loadGpxLauncher.launch(arrayOf("*/*")) }
                     )
                 }
 

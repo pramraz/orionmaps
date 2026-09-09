@@ -560,6 +560,34 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         _recordedTrack.value = emptyList()
     }
 
+    fun importGpx(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val inputStream = getApplication<Application>().contentResolver.openInputStream(uri)
+                val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                
+                // Extract track points using Regex to find <trkpt lat="..." lon="...">
+                val latLonRegex = "<trkpt\\s+lat=\"([-+]?[0-9]*\\.?[0-9]+)\"\\s+lon=\"([-+]?[0-9]*\\.?[0-9]+)\"".toRegex()
+                val parsedList = latLonRegex.findAll(content).map { match ->
+                    val lat = match.groupValues[1].toDouble()
+                    val lon = match.groupValues[2].toDouble()
+                    Location("gpx").apply {
+                        latitude = lat
+                        longitude = lon
+                    }
+                }.toList()
+
+                withContext(Dispatchers.Main) {
+                    _recordedTrack.value = parsedList
+                    _showRecordedTrack.value = true
+                    _isTrackSaved.value = true
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun exportTrackToGpxString(): String {
         val track = _recordedTrack.value
         if (track.isEmpty()) return ""
