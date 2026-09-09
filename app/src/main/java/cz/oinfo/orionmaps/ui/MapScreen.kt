@@ -86,13 +86,31 @@ fun MapScreen(
         }
     )
 
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            )
-        )
+    LaunchedEffect(uiState) {
+        val state = uiState
+        if (state is MapUiState.Success && state.georeference != null) {
+            val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (hasPermission) {
+                viewModel.startLocationUpdates(context)
+            } else {
+                permissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
+        } else if (state !is MapUiState.Loading) {
+            viewModel.stopLocationUpdates()
+        }
     }
     
     val launcher = rememberLauncherForActivityResult(

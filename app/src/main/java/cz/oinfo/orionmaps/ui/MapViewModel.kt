@@ -436,8 +436,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopLocationUpdates() {
+        if (fusedLocationProviderClient == null) return
         fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
         fusedLocationProviderClient = null
+        _currentLocation.value = null
     }
 
     override fun onCleared() {
