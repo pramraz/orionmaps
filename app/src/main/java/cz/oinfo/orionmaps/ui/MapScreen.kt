@@ -69,7 +69,7 @@ fun MapScreen(
             is MapUiState.Empty -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                        Text("Open PDF map")
+                        Text("Open new PDF map")
                     }
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -242,34 +242,6 @@ fun InteractiveMap(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Mode Toggle Button (Lock icon) - Resized to 80%
-            FloatingActionButton(
-                onClick = {
-                    gestureMode = when (gestureMode) {
-                        GestureMode.ALL -> GestureMode.LOCK_ROTATION
-                        GestureMode.LOCK_ROTATION -> GestureMode.LOCK_ZOOM
-                        GestureMode.LOCK_ZOOM -> GestureMode.ALL
-                    }
-                    triggerNotification(when (gestureMode) {
-                        GestureMode.ALL -> "Mode: All Gestures"
-                        GestureMode.LOCK_ROTATION -> "Mode: Rotation Locked"
-                        GestureMode.LOCK_ZOOM -> "Mode: Zoom Locked"
-                    })
-                },
-                modifier = Modifier.size(56.dp * 0.8f),
-                containerColor = when (gestureMode) {
-                    GestureMode.ALL -> MaterialTheme.colorScheme.primaryContainer
-                    GestureMode.LOCK_ROTATION -> Color(0xFFF44336) // Red
-                    GestureMode.LOCK_ZOOM -> Color(0xFFFF9800) // Orange
-                }
-            ) {
-                val icon = when (gestureMode) {
-                    GestureMode.ALL -> Icons.Default.LockOpen
-                    else -> Icons.Default.Lock
-                }
-                Icon(icon, contentDescription = "Toggle Gesture Mode")
-            }
-
             // Settings Button (Gear icon)
             var showSettingsMenu by remember { mutableStateOf(false) }
             var showRecentMapsDialog by remember { mutableStateOf(false) }
@@ -277,7 +249,7 @@ fun InteractiveMap(
             Box {
                 FloatingActionButton(
                     onClick = { showSettingsMenu = true },
-                    modifier = Modifier.size(56.dp * 0.8f),
+                    modifier = Modifier.size(44.dp),
                     containerColor = MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -298,7 +270,7 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.SettingsBackupRestore, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Open PDF map") },
+                        text = { Text("Open new PDF map") },
                         onClick = {
                             onOpenNewMap()
                             showSettingsMenu = false
@@ -314,6 +286,33 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.History, contentDescription = null) }
                     )
                 }
+            }
+
+            FloatingActionButton(
+                onClick = {
+                    gestureMode = when (gestureMode) {
+                        GestureMode.ALL -> GestureMode.LOCK_ROTATION
+                        GestureMode.LOCK_ROTATION -> GestureMode.LOCK_ZOOM
+                        GestureMode.LOCK_ZOOM -> GestureMode.ALL
+                    }
+                    triggerNotification(when (gestureMode) {
+                        GestureMode.ALL -> "Mode: All Gestures"
+                        GestureMode.LOCK_ROTATION -> "Mode: Rotation Locked"
+                        GestureMode.LOCK_ZOOM -> "Mode: Zoom Locked"
+                    })
+                },
+                modifier = Modifier.size(44.dp),
+                containerColor = when (gestureMode) {
+                    GestureMode.ALL -> MaterialTheme.colorScheme.primaryContainer
+                    GestureMode.LOCK_ROTATION -> Color(0xFFF44336) // Red
+                    GestureMode.LOCK_ZOOM -> Color(0xFFFF9800) // Orange
+                }
+            ) {
+                val icon = when (gestureMode) {
+                    GestureMode.ALL -> Icons.Default.LockOpen
+                    else -> Icons.Default.Lock
+                }
+                Icon(icon, contentDescription = "Toggle Gesture Mode")
             }
 
             if (showRecentMapsDialog) {
