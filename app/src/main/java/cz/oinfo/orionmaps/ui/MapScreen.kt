@@ -2,28 +2,33 @@ package cz.oinfo.orionmaps.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
+
+enum class GestureMode {
+    ALL, LOCK_ROTATION, LOCK_ZOOM
+}
 
 @Composable
 fun MapScreen(
@@ -76,27 +81,60 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
     var offset by remember { mutableStateOf(Offset.Zero) }
     var rotation by remember { mutableStateOf(0f) }
     
-    // Requirement 2: Separate Zoom and Rotation (Mode Toggle)
-    var isZoomLocked by remember { mutableStateOf(false) }
+    // Requirement 2: Three-State Lock Mode
+    var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
+    
+    // Requirement 3: Custom 1-Second Notification
+    var notificationText by remember { mutableStateOf("") }
+    var showNotification by remember { mutableStateOf(false) }
+
+    LaunchedEffect(notificationText, showNotification) {
+        if (showNotification) {
+            delay(1000)
+            showNotification = false
+        }
+    }
+
+    fun triggerNotification(text: String) {
+        notificationText = text
+        showNotification = true
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(isZoomLocked) {
-                detectTransformGestures { _, pan, zoom, rotate ->
-                    // Requirement 1: Simplify Transformations (Center Pivot)
-                    // Offset is always accumulated directly
-                    offset += pan
+            .pointerInput(Unit) {
+                detectTransformGestures { centroid, pan, zoom, rotate ->
+                    // Requirement 2: Handle Lock Modes
+                    val effectiveZoom = if (gestureMode == GestureMode.LOCK_ZOOM) 1f else zoom
+                    val effectiveRotation = if (gestureMode == GestureMode.LOCK_ROTATION) 0f else rotate
+
+                    // Requirement 1: Perfect Centroid Math
+                    val angleInRadians = effectiveRotation * Math.PI / 180.0
+                    val cos = kotlin.math.cos(angleInRadians).toFloat()
+                    val sin = kotlin.math.sin(angleInRadians).toFloat()
+
+                    // 1. Calculate the distance from the current offset to the centroid
+                    val x = centroid.x - offset.x
+                    val y = centroid.y - offset.y
+
+                    // 2. Apply rotation to this distance
+                    val rotatedX = x * cos - y * sin
+                    val rotatedY = x * sin + y * cos
+
+                    // 3. Apply scale to the rotated distance
+                    val scaledX = rotatedX * effectiveZoom
+                    val scaledY = rotatedY * effectiveZoom
+
+                    // 4. Update offset (add pan, subtract the difference caused by scale/rotation)
+                    offset = Offset(
+                        x = offset.x + pan.x + x - scaledX,
+                        y = offset.y + pan.y + y - scaledY
+                    )
                     
-                    // Requirement 3: Conditional Gestures
-                    if (!isZoomLocked) {
-                        // Move & Zoom mode
-                        scale *= zoom
-                        scale = scale.coerceIn(0.5f, 15f)
-                    } else {
-                        // Move & Rotate mode
-                        rotation += rotate
-                    }
+                    // 5. Update scale and rotation
+                    scale = (scale * effectiveZoom).coerceIn(1f, 10f)
+                    rotation += effectiveRotation
                 }
             }
     ) {
@@ -111,41 +149,78 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
                     scaleY = scale,
                     rotationZ = rotation,
                     translationX = offset.x,
-                    translationY = offset.y,
-                    // Use center pivot by default
-                    transformOrigin = TransformOrigin.Center
+                    translationY = offset.y
                 )
         )
 
-        // UI Toggle Button
-        FloatingActionButton(
-            onClick = { isZoomLocked = !isZoomLocked },
+        // Custom Notification Overlay
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            AnimatedVisibility(
+                visible = showNotification,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Surface(
+                    modifier = Modifier.padding(top = 64.dp),
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text(
+                        text = notificationText,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
+
+        // Control Buttons
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(24.dp),
-            containerColor = if (isZoomLocked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Icon(
-                imageVector = if (isZoomLocked) Icons.Default.Lock else Icons.Default.Refresh,
-                contentDescription = if (isZoomLocked) "Switch to Zoom" else "Switch to Rotate",
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        
-        // Mode Indicator Text
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 48.dp),
-            color = Color.Black.copy(alpha = 0.5f),
-            shape = MaterialTheme.shapes.medium
-        ) {
-            Text(
-                text = if (isZoomLocked) "MODE: ROTATE & PAN" else "MODE: ZOOM & PAN",
-                color = Color.White,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelLarge
-            )
+            // Requirement 4: Reset Button
+            SmallFloatingActionButton(
+                onClick = {
+                    scale = 1f
+                    rotation = 0f
+                    offset = Offset.Zero
+                    triggerNotification("Map Reset")
+                },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Reset Map")
+            }
+
+            // Mode Toggle Button
+            FloatingActionButton(
+                onClick = {
+                    gestureMode = when (gestureMode) {
+                        GestureMode.ALL -> GestureMode.LOCK_ROTATION
+                        GestureMode.LOCK_ROTATION -> GestureMode.LOCK_ZOOM
+                        GestureMode.LOCK_ZOOM -> GestureMode.ALL
+                    }
+                    triggerNotification(when (gestureMode) {
+                        GestureMode.ALL -> "Mode: All Gestures"
+                        GestureMode.LOCK_ROTATION -> "Mode: Rotation Locked"
+                        GestureMode.LOCK_ZOOM -> "Mode: Zoom Locked"
+                    })
+                },
+                containerColor = when (gestureMode) {
+                    GestureMode.ALL -> MaterialTheme.colorScheme.primaryContainer
+                    else -> MaterialTheme.colorScheme.tertiaryContainer
+                }
+            ) {
+                val icon = when (gestureMode) {
+                    GestureMode.ALL -> Icons.Default.Settings
+                    GestureMode.LOCK_ROTATION -> Icons.Default.Lock
+                    GestureMode.LOCK_ZOOM -> Icons.Default.Lock // Or another appropriate icon
+                }
+                Icon(icon, contentDescription = "Toggle Gesture Mode")
+            }
         }
     }
 }
