@@ -239,10 +239,39 @@ fun InteractiveMap(
     val gpsMode by viewModel.gpsMode.collectAsState()
     val isTrackingSuspended by viewModel.isTrackingSuspended.collectAsState()
     val compassBearing by viewModel.compassBearing.collectAsState()
-    
-    var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
+
+    val isRecordingEnabled by viewModel.isRecordingEnabled.collectAsState()
+    val isRecording by viewModel.isRecording.collectAsState()
+    val showRecordedTrack by viewModel.showRecordedTrack.collectAsState()
+    val recordedTrack by viewModel.recordedTrack.collectAsState()
+
+    val context = LocalContext.current
+
     var notificationText by remember { mutableStateOf("") }
     var showNotification by remember { mutableStateOf(false) }
+
+    fun triggerNotification(text: String) {
+        notificationText = text
+        showNotification = true
+    }
+
+    val createGpxLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/gpx+xml")
+    ) { uri ->
+        uri?.let {
+            val gpxString = viewModel.exportTrackToGpxString()
+            try {
+                context.contentResolver.openOutputStream(it)?.use { output ->
+                    output.write(gpxString.toByteArray())
+                }
+                triggerNotification("Track saved successfully")
+            } catch (e: Exception) {
+                triggerNotification("Error saving track")
+            }
+        }
+    }
+    
+    var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
 
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -251,11 +280,6 @@ fun InteractiveMap(
             delay(1000)
             showNotification = false
         }
-    }
-
-    fun triggerNotification(text: String) {
-        notificationText = text
-        showNotification = true
     }
 
     Box(
@@ -419,7 +443,66 @@ fun InteractiveMap(
                         rotationZ = rotation
                     }
             ) {
-                // Directional Marker
+            // Recorded Track Rendering
+            if (showRecordedTrack && recordedTrack.isNotEmpty() && georeference != null) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                            translationX = offset.x
+                            translationY = offset.y
+                            scaleX = scale
+                            scaleY = scale
+                            rotationZ = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) effectiveRotation else rotation
+                        }
+                ) {
+                    val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    val containerRatio = size.width / size.height
+
+                    val renderedWidth: Float
+                    val renderedHeight: Float
+                    val renderOffsetX: Float
+                    val renderOffsetY: Float
+
+                    if (imgRatio > containerRatio) {
+                        renderedWidth = size.width
+                        renderedHeight = size.width / imgRatio
+                        renderOffsetX = 0f
+                        renderOffsetY = (size.height - renderedHeight) / 2f
+                    } else {
+                        renderedHeight = size.height
+                        renderedWidth = size.height * imgRatio
+                        renderOffsetX = (size.width - renderedWidth) / 2f
+                        renderOffsetY = 0f
+                    }
+
+                    val path = androidx.compose.ui.graphics.Path()
+                    recordedTrack.forEachIndexed { index, loc ->
+                        val percentPos = getMapPercentages(loc, georeference)
+                        val x = renderOffsetX + percentPos.first * renderedWidth
+                        val y = renderOffsetY + percentPos.second * renderedHeight
+                        
+                        if (index == 0) {
+                            path.moveTo(x, y)
+                        } else {
+                            path.lineTo(x, y)
+                        }
+                    }
+
+                    drawPath(
+                        path = path,
+                        color = Color.Magenta.copy(alpha = 0.7f),
+                        style = Stroke(
+                            width = 4.dp.toPx(),
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round
+                        )
+                    )
+                }
+            }
+
+            // Directional Marker
                 Canvas(
                     modifier = Modifier
                         .offset {
@@ -568,6 +651,38 @@ fun InteractiveMap(
             }
 
             if (georeference != null) {
+                if (isRecordingEnabled) {
+                    FloatingActionButton(
+                        onClick = {
+                            if (isRecording) {
+                                viewModel.stopRecording()
+                                createGpxLauncher.launch("orion_track.gpx")
+                            } else {
+                                viewModel.startRecording()
+                            }
+                        },
+                        modifier = Modifier.size(44.dp),
+                        containerColor = if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Icon(
+                            if (isRecording) Icons.Default.Stop else Icons.Default.FiberManualRecord,
+                            contentDescription = if (isRecording) "Stop Recording" else "Start Recording",
+                            tint = if (isRecording) Color.Red else LocalContentColor.current
+                        )
+                    }
+
+                    FloatingActionButton(
+                        onClick = { viewModel.setShowRecordedTrack(!showRecordedTrack) },
+                        modifier = Modifier.size(44.dp),
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Icon(
+                            if (showRecordedTrack) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = "Toggle Track Visibility"
+                        )
+                    }
+                }
+
                 FloatingActionButton(
                     onClick = { viewModel.cycleGpsMode() },
                     modifier = Modifier.size(44.dp),
@@ -703,6 +818,26 @@ fun AppSettingsDialog(
                     Switch(
                         checked = showOverLockScreen,
                         onCheckedChange = { viewModel.setShowOverLockScreen(it) }
+                    )
+                }
+
+                val isRecordingEnabled by viewModel.isRecordingEnabled.collectAsState()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Track recording", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "Enable path tracking and GPX export",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isRecordingEnabled,
+                        onCheckedChange = { viewModel.setRecordingEnabled(it) }
                     )
                 }
 

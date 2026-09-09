@@ -66,10 +66,27 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     private val _compassBearing = MutableStateFlow(0f)
     val compassBearing: StateFlow<Float> = _compassBearing.asStateFlow()
 
+    private val _isRecordingEnabled = MutableStateFlow(sharedPreferences.getBoolean("recording_enabled", false))
+    val isRecordingEnabled: StateFlow<Boolean> = _isRecordingEnabled.asStateFlow()
+
+    private val _isRecording = MutableStateFlow(false)
+    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+
+    private val _showRecordedTrack = MutableStateFlow(true)
+    val showRecordedTrack: StateFlow<Boolean> = _showRecordedTrack.asStateFlow()
+
+    private val _recordedTrack = MutableStateFlow<List<Location>>(emptyList())
+    val recordedTrack: StateFlow<List<Location>> = _recordedTrack.asStateFlow()
+
     private var fusedLocationProviderClient: FusedLocationProviderClient? = null
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            _currentLocation.value = result.lastLocation
+            val location = result.lastLocation
+            _currentLocation.value = location
+            
+            if (_isRecording.value && location != null) {
+                _recordedTrack.value = _recordedTrack.value + location
+            }
         }
     }
 
@@ -504,6 +521,56 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun setTrackingSuspended(suspended: Boolean) {
         _isTrackingSuspended.value = suspended
+    }
+
+    fun setRecordingEnabled(enabled: Boolean) {
+        _isRecordingEnabled.value = enabled
+        sharedPreferences.edit().putBoolean("recording_enabled", enabled).apply()
+    }
+
+    fun startRecording() {
+        _isRecording.value = true
+        _recordedTrack.value = emptyList()
+    }
+
+    fun stopRecording() {
+        _isRecording.value = false
+    }
+
+    fun setShowRecordedTrack(show: Boolean) {
+        _showRecordedTrack.value = show
+    }
+
+    fun clearTrack() {
+        _recordedTrack.value = emptyList()
+    }
+
+    fun exportTrackToGpxString(): String {
+        val track = _recordedTrack.value
+        if (track.isEmpty()) return ""
+
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        sb.append("<gpx version=\"1.1\" creator=\"OrionMaps\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
+        sb.append("  <trk>\n")
+        sb.append("    <name>Orion Track</name>\n")
+        sb.append("    <trkseg>\n")
+        
+        val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+        dateFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        
+        track.forEach { loc ->
+            sb.append("      <trkpt lat=\"${loc.latitude}\" lon=\"${loc.longitude}\">\n")
+            sb.append("        <ele>${loc.altitude}</ele>\n")
+            sb.append("        <time>${dateFormat.format(java.util.Date(loc.time))}</time>\n")
+            sb.append("      </trkpt>\n")
+        }
+
+        sb.append("    </trkseg>\n")
+        sb.append("  </trk>\n")
+        sb.append("</gpx>")
+        
+        return sb.toString()
     }
 
     override fun onCleared() {
