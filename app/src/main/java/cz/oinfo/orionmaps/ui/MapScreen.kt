@@ -111,16 +111,38 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             .fillMaxSize()
             .onGloballyPositioned { containerSize = it.size }
             .pointerInput(gestureMode) {
-                detectTransformGestures { _, pan, zoom, rotate ->
+                detectTransformGestures { centroid, pan, zoom, rotate ->
                     val effectiveZoom = if (gestureMode == GestureMode.LOCK_ZOOM) 1f else zoom
                     val effectiveRotation = if (gestureMode == GestureMode.LOCK_ROTATION) 0f else rotate
 
-                    // Simplify transformations to always use the screen center as the pivot.
-                    // This leverages the default TransformOrigin.Center of the graphicsLayer.
-                    
-                    scale = (scale * effectiveZoom).coerceIn(1f, 15f)
+                    val oldScale = scale
+                    val newScale = (scale * effectiveZoom).coerceIn(1f, 15f)
+                    val scaleRatio = newScale / oldScale
+
+                    val angleInRadians = effectiveRotation * PI / 180.0
+                    val cos = cos(angleInRadians).toFloat()
+                    val sin = sin(angleInRadians).toFloat()
+
+                    // Vektor od aktuálního offsetu k centroidu (bodu mezi prsty)
+                    val dx = centroid.x - offset.x
+                    val dy = centroid.y - offset.y
+
+                    // Aplikace rotace na tento vektor
+                    val rx = dx * cos - dy * sin
+                    val ry = dx * sin + dy * cos
+
+                    // Aplikace změny měřítka
+                    val sx = rx * scaleRatio
+                    val sy = ry * scaleRatio
+
+                    // Výpočet nového offsetu: stávající + posun prstu + korekční posun
+                    offset = Offset(
+                        x = offset.x + pan.x + dx - sx,
+                        y = offset.y + pan.y + dy - sy
+                    )
+
+                    scale = newScale
                     rotation += effectiveRotation
-                    offset += pan
                 }
             }
     ) {
@@ -131,6 +153,8 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
                 .fillMaxSize()
                 .background(Color.White)
                 .graphicsLayer {
+                    // ZÁSADNÍ OPRAVA: Fixace středu transformace do levého horního rohu
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                     translationX = offset.x
                     translationY = offset.y
                     scaleX = scale
