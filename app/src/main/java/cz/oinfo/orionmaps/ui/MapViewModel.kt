@@ -28,7 +28,7 @@ import java.util.zip.ZipInputStream
 
 data class RecentMap(val uriString: String, val name: String)
 
-data class MapGeoreference(val north: Double, val south: Double, val east: Double, val west: Double)
+data class MapGeoreference(val north: Double, val south: Double, val east: Double, val west: Double, val rotation: Double = 0.0)
 
 class MapViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -135,9 +135,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             val south = extractCoord(kml, "south")
             val east = extractCoord(kml, "east")
             val west = extractCoord(kml, "west")
-            
+            val rotation = extractCoord(kml, "rotation") ?: 0.0 // Výchozí hodnota je 0, pokud chybí
+
             if (north != null && south != null && east != null && west != null) {
-                MapGeoreference(north, south, east, west)
+                MapGeoreference(north, south, east, west, rotation)
             } else null
         } catch (e: Exception) {
             null

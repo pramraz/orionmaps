@@ -255,14 +255,37 @@ fun InteractiveMap(
                 }
         )
 
-        // GPS Dot
-        if (georeference != null && currentLocation != null) {
-            val pixelPos = getPixelCoordinates(
+// GPS Dot
+        if (georeference != null && currentLocation != null && containerSize.width > 0) {
+            val percentPos = getMapPercentages(
                 currentLocation!!,
-                georeference,
-                bitmap.width,
-                bitmap.height
+                georeference
             )
+
+            // Výpočet reálného zmenšení a posunu mapy na obrazovce (ContentScale.Fit)
+            val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            val containerRatio = containerSize.width.toFloat() / containerSize.height.toFloat()
+
+            val renderedWidth: Float
+            val renderedHeight: Float
+            val renderOffsetX: Float
+            val renderOffsetY: Float
+
+            if (imgRatio > containerRatio) {
+                renderedWidth = containerSize.width.toFloat()
+                renderedHeight = containerSize.width.toFloat() / imgRatio
+                renderOffsetX = 0f
+                renderOffsetY = (containerSize.height.toFloat() - renderedHeight) / 2f
+            } else {
+                renderedHeight = containerSize.height.toFloat()
+                renderedWidth = containerSize.height.toFloat() * imgRatio
+                renderOffsetX = (containerSize.width.toFloat() - renderedWidth) / 2f
+                renderOffsetY = 0f
+            }
+
+            // Finální X/Y pozice na displeji pro náš bod
+            val baseDotX = renderOffsetX + percentPos.first * renderedWidth
+            val baseDotY = renderOffsetY + percentPos.second * renderedHeight
 
             Box(
                 modifier = Modifier
@@ -280,12 +303,12 @@ fun InteractiveMap(
                     modifier = Modifier
                         .offset {
                             IntOffset(
-                                pixelPos.first.roundToInt(),
-                                pixelPos.second.roundToInt()
+                                baseDotX.roundToInt(),
+                                baseDotY.roundToInt()
                             )
                         }
-                        .size(12.dp)
-                        .offset((-6).dp, (-6).dp) // Center the dot
+                        .size(6.dp)
+                        .offset((-3).dp, (-3).dp) // Vycentrování středu tečky
                         .clip(CircleShape)
                         .background(Color.Blue)
                 )
@@ -409,19 +432,36 @@ fun InteractiveMap(
     }
 }
 
-fun getPixelCoordinates(
+fun getMapPercentages(
     location: android.location.Location,
-    geo: MapGeoreference,
-    width: Int,
-    height: Int
+    geo: MapGeoreference
 ): Pair<Float, Float> {
-    val percentX = (location.longitude - geo.west) / (geo.east - geo.west)
-    val percentY = (geo.north - location.latitude) / (geo.north - geo.south)
-    
-    return Pair(
-        (percentX * width).toFloat(),
-        (percentY * height).toFloat()
-    )
+    val midLat = (geo.north + geo.south) / 2.0
+    val midLon = (geo.east + geo.west) / 2.0
+
+    val dLat = location.latitude - midLat
+    val dLon = location.longitude - midLon
+
+    // Korekce sférického zkreslení Země
+    val aspect = kotlin.math.cos(Math.toRadians(midLat))
+    val dLonAdj = dLon * aspect
+
+    // Rotace GPS bodu vůči mapě (inverzní k rotaci mapy v KML)
+    val angleRad = Math.toRadians(-geo.rotation)
+    val cos = kotlin.math.cos(angleRad)
+    val sin = kotlin.math.sin(angleRad)
+
+    val rotDLonAdj = dLonAdj * cos - dLat * sin
+    val rotDLat = dLonAdj * sin + dLat * cos
+
+    // Návrat z korigované délky
+    val rotDLon = rotDLonAdj / aspect
+
+    // Výpočet procentuální pozice vůči hranicím mapy
+    val percentX = (rotDLon + (geo.east - geo.west) / 2.0) / (geo.east - geo.west)
+    val percentY = ((geo.north - geo.south) / 2.0 - rotDLat) / (geo.north - geo.south)
+
+    return Pair(percentX.toFloat(), percentY.toFloat())
 }
 
 @Composable
