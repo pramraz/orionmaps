@@ -111,39 +111,16 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             .fillMaxSize()
             .onGloballyPositioned { containerSize = it.size }
             .pointerInput(gestureMode) {
-                detectTransformGestures { centroid, pan, zoom, rotate ->
+                detectTransformGestures { _, pan, zoom, rotate ->
                     val effectiveZoom = if (gestureMode == GestureMode.LOCK_ZOOM) 1f else zoom
                     val effectiveRotation = if (gestureMode == GestureMode.LOCK_ROTATION) 0f else rotate
 
-                    // Precise Centroid Anchoring Math
-                    // We need to keep the point under the centroid (fingers) fixed relative to the map content.
+                    // Simplify transformations to always use the screen center as the pivot.
+                    // This leverages the default TransformOrigin.Center of the graphicsLayer.
                     
-                    val oldScale = scale
                     scale = (scale * effectiveZoom).coerceIn(1f, 15f)
-                    val scaleFactor = scale / oldScale
-
-                    // 1. Apply Pan
+                    rotation += effectiveRotation
                     offset += pan
-
-                    // 2. Adjust offset for Zoom around Centroid
-                    // The point under 'centroid' should stay at the same coordinate on the map.
-                    // offset = centroid - (centroid - offset) * scaleFactor
-                    offset = centroid - (centroid - offset) * scaleFactor
-
-                    // 3. Adjust offset for Rotation around Centroid
-                    if (effectiveRotation != 0f) {
-                        val angleRad = effectiveRotation * (PI.toFloat() / 180f)
-                        val cosA = cos(angleRad)
-                        val sinA = sin(angleRad)
-
-                        val relativeCentroid = offset - centroid
-                        val rotatedOffset = Offset(
-                            relativeCentroid.x * cosA - relativeCentroid.y * sinA,
-                            relativeCentroid.x * sinA + relativeCentroid.y * cosA
-                        )
-                        offset = rotatedOffset + centroid
-                        rotation += effectiveRotation
-                    }
                 }
             }
     ) {
