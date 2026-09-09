@@ -8,11 +8,14 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.location.Location
 import android.net.Uri
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.location.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +39,16 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _recentMaps = MutableStateFlow<List<RecentMap>>(emptyList())
     val recentMaps = _recentMaps.asStateFlow()
+
+    private val _currentLocation = MutableStateFlow<Location?>(null)
+    val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
+
+    private var fusedLocationProviderClient: FusedLocationProviderClient? = null
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            _currentLocation.value = result.lastLocation
+        }
+    }
 
     init {
         loadRecentMaps()
@@ -223,9 +236,32 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = MapUiState.Empty
     }
 
+    fun startLocationUpdates(context: Context) {
+        if (fusedLocationProviderClient != null) return
+
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L).build()
+
+        try {
+            fusedLocationProviderClient?.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+        }
+    }
+
+    fun stopLocationUpdates() {
+        fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
+        fusedLocationProviderClient = null
+    }
+
     override fun onCleared() {
         super.onCleared()
         clearMap()
+        stopLocationUpdates()
     }
 
     private suspend fun renderPdfFirstPage(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {

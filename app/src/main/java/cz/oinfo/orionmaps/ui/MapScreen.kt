@@ -1,5 +1,6 @@
 package cz.oinfo.orionmaps.ui
 
+import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -7,19 +8,21 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -29,6 +32,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
@@ -37,6 +41,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 enum class GestureMode {
@@ -51,6 +56,27 @@ fun MapScreen(
     val uiState by viewModel.uiState.collectAsState()
     val recentMaps by viewModel.recentMaps.collectAsState()
     var showRecentMapsDialog by remember { mutableStateOf(false) }
+    
+    val context = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = { permissions ->
+            if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true) {
+                viewModel.startLocationUpdates(context)
+            }
+        }
+    )
+
+    LaunchedEffect(Unit) {
+        permissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
     
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -95,6 +121,7 @@ fun MapScreen(
             is MapUiState.Success -> {
                 InteractiveMap(
                     bitmap = state.bitmap,
+                    georeference = state.georeference,
                     onOpenNewMap = { launcher.launch(arrayOf("application/pdf", "application/vnd.google-earth.kmz")) },
                     viewModel = viewModel
                 )
@@ -143,12 +170,15 @@ fun MapScreen(
 @Composable
 fun InteractiveMap(
     bitmap: android.graphics.Bitmap,
+    georeference: MapGeoreference?,
     onOpenNewMap: () -> Unit,
     viewModel: MapViewModel
 ) {
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var rotation by remember { mutableStateOf(0f) }
+    
+    val currentLocation by viewModel.currentLocation.collectAsState()
     
     var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
     var notificationText by remember { mutableStateOf("") }
@@ -224,6 +254,43 @@ fun InteractiveMap(
                     rotationZ = rotation
                 }
         )
+
+        // GPS Dot
+        if (georeference != null && currentLocation != null) {
+            val pixelPos = getPixelCoordinates(
+                currentLocation!!,
+                georeference,
+                bitmap.width,
+                bitmap.height
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                        translationX = offset.x
+                        translationY = offset.y
+                        scaleX = scale
+                        scaleY = scale
+                        rotationZ = rotation
+                    }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                pixelPos.first.roundToInt(),
+                                pixelPos.second.roundToInt()
+                            )
+                        }
+                        .size(12.dp)
+                        .offset((-6).dp, (-6).dp) // Center the dot
+                        .clip(CircleShape)
+                        .background(Color.Blue)
+                )
+            }
+        }
 
         // Custom Notification Overlay
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -340,6 +407,21 @@ fun InteractiveMap(
             }
         }
     }
+}
+
+fun getPixelCoordinates(
+    location: android.location.Location,
+    geo: MapGeoreference,
+    width: Int,
+    height: Int
+): Pair<Float, Float> {
+    val percentX = (location.longitude - geo.west) / (geo.east - geo.west)
+    val percentY = (geo.north - location.latitude) / (geo.north - geo.south)
+    
+    return Pair(
+        (percentX * width).toFloat(),
+        (percentY * height).toFloat()
+    )
 }
 
 @Composable
