@@ -201,7 +201,7 @@ fun MapScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(Color.White.copy(alpha = 0.5f))
+                .background(Color.White.copy(alpha = 0.7f))
                 .align(Alignment.TopCenter)
         )
 
@@ -565,7 +565,8 @@ fun InteractiveMap(
         Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 32.dp, end = 16.dp),
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = 12.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

@@ -33,12 +33,10 @@ class MainActivity : ComponentActivity() {
             }
 
             OrionMapsTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MapScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        viewModel = viewModel
-                    )
-                }
+                MapScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    viewModel = viewModel
+                )
             }
         }
     }
