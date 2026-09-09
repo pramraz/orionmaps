@@ -56,6 +56,7 @@ fun MapScreen(
     viewModel: MapViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val gpsMode by viewModel.gpsMode.collectAsState()
     val recentMaps by viewModel.recentMaps.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     var showRecentMapsDialog by remember { mutableStateOf(false) }
@@ -86,9 +87,9 @@ fun MapScreen(
         }
     )
 
-    LaunchedEffect(uiState) {
+    LaunchedEffect(uiState, gpsMode) {
         val state = uiState
-        if (state is MapUiState.Success && state.georeference != null) {
+        if (state is MapUiState.Success && state.georeference != null && gpsMode != GpsMode.HIDDEN) {
             val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -333,9 +334,9 @@ fun InteractiveMap(
             val baseDotY = renderOffsetY + percentPos.second * renderedHeight
 
             // Calculate offset to center baseDotX, baseDotY
-            // Target is container center
+            // Target is bottom third
             val centerX = containerSize.width / 2f
-            val centerY = containerSize.height / 2f
+            val centerY = containerSize.height * (2f / 3f)
 
             val angleInRadians = effectiveRotation * PI / 180.0
             val cos = cos(angleInRadians).toFloat()
