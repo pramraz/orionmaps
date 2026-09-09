@@ -60,7 +60,7 @@ fun MapScreen(
         when (val state = uiState) {
             is MapUiState.Empty -> {
                 Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                    Text("Pick PDF Map")
+                    Text("Open PDF Map")
                 }
             }
             is MapUiState.Loading -> {
