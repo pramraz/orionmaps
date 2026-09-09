@@ -11,22 +11,28 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SettingsBackupRestore
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -67,15 +73,21 @@ fun MapScreen(
                 CircularProgressIndicator(color = Color.White)
             }
             is MapUiState.Success -> {
-                InteractiveMap(bitmap = state.bitmap)
+                InteractiveMap(
+                    bitmap = state.bitmap,
+                    onOpenNewMap = { launcher.launch(arrayOf("application/pdf")) },
+                    viewModel = viewModel
+                )
             }
             is MapUiState.Error -> {
-                Text(text = state.message, color = MaterialTheme.colorScheme.error)
-                Button(
-                    onClick = { launcher.launch(arrayOf("application/pdf")) },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
-                    Text("Try Again")
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                    Button(
+                        onClick = { launcher.launch(arrayOf("application/pdf")) },
+                        modifier = Modifier.padding(top = 16.dp)
+                    ) {
+                        Text("Try Again")
+                    }
                 }
             }
         }
@@ -83,7 +95,11 @@ fun MapScreen(
 }
 
 @Composable
-fun InteractiveMap(bitmap: android.graphics.Bitmap) {
+fun InteractiveMap(
+    bitmap: android.graphics.Bitmap,
+    onOpenNewMap: () -> Unit,
+    viewModel: MapViewModel
+) {
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var rotation by remember { mutableStateOf(0f) }
@@ -185,28 +201,15 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             }
         }
 
-        // Control Buttons in Top-Right Row
-        Row(
+        // Control Buttons in Top-Right Column
+        Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 32.dp, end = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Reset Button (Single Click)
-            SmallFloatingActionButton(
-                onClick = {
-                    scale = 1f
-                    rotation = 0f
-                    offset = Offset.Zero
-                    triggerNotification("Map Reset")
-                },
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
-            ) {
-                Icon(Icons.Default.SettingsBackupRestore, contentDescription = "Reset Map")
-            }
-
-            // Mode Toggle Button
+            // Mode Toggle Button (Lock icon) - Resized to 80%
             FloatingActionButton(
                 onClick = {
                     gestureMode = when (gestureMode) {
@@ -220,6 +223,7 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
                         GestureMode.LOCK_ZOOM -> "Mode: Zoom Locked"
                     })
                 },
+                modifier = Modifier.size(56.dp * 0.8f),
                 containerColor = when (gestureMode) {
                     GestureMode.ALL -> MaterialTheme.colorScheme.primaryContainer
                     GestureMode.LOCK_ROTATION -> Color(0xFFF44336) // Red
@@ -227,10 +231,148 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
                 }
             ) {
                 val icon = when (gestureMode) {
-                    GestureMode.ALL -> Icons.Default.Settings
+                    GestureMode.ALL -> Icons.Default.LockOpen
                     else -> Icons.Default.Lock
                 }
                 Icon(icon, contentDescription = "Toggle Gesture Mode")
+            }
+
+            // Settings Button (Gear icon)
+            var showSettingsMenu by remember { mutableStateOf(false) }
+            var showRecentMapsDialog by remember { mutableStateOf(false) }
+
+            Box {
+                FloatingActionButton(
+                    onClick = { showSettingsMenu = true },
+                    modifier = Modifier.size(56.dp * 0.8f),
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                }
+
+                DropdownMenu(
+                    expanded = showSettingsMenu,
+                    onDismissRequest = { showSettingsMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Reset map") },
+                        onClick = {
+                            scale = 1f
+                            rotation = 0f
+                            offset = Offset.Zero
+                            showSettingsMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Default.SettingsBackupRestore, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Open PDF map") },
+                        onClick = {
+                            onOpenNewMap()
+                            showSettingsMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Recent maps") },
+                        onClick = {
+                            showRecentMapsDialog = true
+                            showSettingsMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Default.History, contentDescription = null) }
+                    )
+                }
+            }
+
+            if (showRecentMapsDialog) {
+                RecentMapsDialog(
+                    onDismiss = { showRecentMapsDialog = false },
+                    onMapSelected = { uriString ->
+                        viewModel.loadPdf(android.net.Uri.parse(uriString))
+                        showRecentMapsDialog = false
+                    },
+                    viewModel = viewModel
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RecentMapsDialog(
+    onDismiss: () -> Unit,
+    onMapSelected: (String) -> Unit,
+    viewModel: MapViewModel
+) {
+    val recentMaps by viewModel.recentMaps.collectAsState()
+    val context = LocalContext.current
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Recent Maps",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    IconButton(onClick = { viewModel.clearRecentMaps() }) {
+                        Icon(Icons.Outlined.Delete, contentDescription = "Clear List")
+                    }
+                }
+
+                if (recentMaps.isEmpty()) {
+                    Text(
+                        text = "No recent maps",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 400.dp)
+                    ) {
+                        items(recentMaps) { map ->
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = map.name,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                modifier = Modifier.clickable {
+                                    try {
+                                        onMapSelected(map.uriString)
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "Error opening map",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Close")
+                }
             }
         }
     }
