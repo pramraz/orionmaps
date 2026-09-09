@@ -196,6 +196,15 @@ fun MapScreen(
             }
         }
 
+        // Status Bar Background
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsTopHeight(WindowInsets.statusBars)
+                .background(Color.White.copy(alpha = 0.5f))
+                .align(Alignment.TopCenter)
+        )
+
         if (showRecentMapsDialog) {
             RecentMapsDialog(
                 onDismiss = { showRecentMapsDialog = false },
