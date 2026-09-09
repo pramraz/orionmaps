@@ -49,6 +49,8 @@ fun MapScreen(
     viewModel: MapViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val recentMaps by viewModel.recentMaps.collectAsState()
+    var showRecentMapsDialog by remember { mutableStateOf(false) }
     
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -65,8 +67,19 @@ fun MapScreen(
     ) {
         when (val state = uiState) {
             is MapUiState.Empty -> {
-                Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                    Text("Open PDF Map")
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
+                        Text("Open PDF map")
+                    }
+                    if (recentMaps.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { showRecentMapsDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        ) {
+                            Text("Recent maps")
+                        }
+                    }
                 }
             }
             is MapUiState.Loading -> {
@@ -88,8 +101,28 @@ fun MapScreen(
                     ) {
                         Text("Try Again")
                     }
+                    if (recentMaps.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { showRecentMapsDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        ) {
+                            Text("Recent maps")
+                        }
+                    }
                 }
             }
+        }
+
+        if (showRecentMapsDialog) {
+            RecentMapsDialog(
+                onDismiss = { showRecentMapsDialog = false },
+                onMapSelected = { uriString ->
+                    viewModel.loadPdf(android.net.Uri.parse(uriString))
+                    showRecentMapsDialog = false
+                },
+                viewModel = viewModel
+            )
         }
     }
 }

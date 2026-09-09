@@ -56,6 +56,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 addRecentMap(uri)
             } else {
                 _uiState.value = MapUiState.Error("Failed to render PDF")
+                // If it fails, we might want to return to Empty state if it was an auto-load
+                // For now, Success or Error is fine, but if we want to show Empty screen on failure:
+                // _uiState.value = MapUiState.Empty
             }
         }
     }
@@ -121,6 +124,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     maps.add(RecentMap(obj.getString("uri"), obj.getString("name")))
                 }
                 _recentMaps.value = maps
+                
+                // Requirement: Open last opened map
+                if (maps.isNotEmpty()) {
+                    loadPdf(Uri.parse(maps[0].uriString))
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
