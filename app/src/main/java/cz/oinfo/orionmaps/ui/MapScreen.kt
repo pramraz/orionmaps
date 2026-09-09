@@ -524,30 +524,32 @@ fun InteractiveMap(
                 }
             }
 
-            FloatingActionButton(
-                onClick = { viewModel.cycleGpsMode() },
-                modifier = Modifier.size(44.dp),
-                containerColor = when (gpsMode) {
-                    GpsMode.HIDDEN -> MaterialTheme.colorScheme.surfaceVariant
-                    GpsMode.FREE -> MaterialTheme.colorScheme.primaryContainer
-                    GpsMode.FOLLOW -> MaterialTheme.colorScheme.tertiaryContainer
-                }
-            ) {
-                val icon = when (gpsMode) {
-                    GpsMode.HIDDEN -> Icons.Default.LocationOff
-                    GpsMode.FREE -> Icons.Default.LocationOn
-                    GpsMode.FOLLOW -> Icons.Default.Navigation
-                }
-                Icon(icon, contentDescription = "Cycle GPS Mode")
-            }
-
-            if (gpsMode == GpsMode.FOLLOW && isTrackingSuspended) {
-                SmallFloatingActionButton(
-                    onClick = { viewModel.setTrackingSuspended(false) },
-                    modifier = Modifier.size(40.dp),
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+            if (georeference != null) {
+                FloatingActionButton(
+                    onClick = { viewModel.cycleGpsMode() },
+                    modifier = Modifier.size(44.dp),
+                    containerColor = when (gpsMode) {
+                        GpsMode.HIDDEN -> MaterialTheme.colorScheme.surfaceVariant
+                        GpsMode.FREE -> MaterialTheme.colorScheme.primaryContainer
+                        GpsMode.FOLLOW -> MaterialTheme.colorScheme.tertiaryContainer
+                    }
                 ) {
-                    Icon(Icons.Default.MyLocation, contentDescription = "Recenter")
+                    val icon = when (gpsMode) {
+                        GpsMode.HIDDEN -> Icons.Default.LocationOff
+                        GpsMode.FREE -> Icons.Default.LocationOn
+                        GpsMode.FOLLOW -> Icons.Default.Navigation
+                    }
+                    Icon(icon, contentDescription = "Cycle GPS Mode")
+                }
+
+                if (gpsMode == GpsMode.FOLLOW && isTrackingSuspended) {
+                    SmallFloatingActionButton(
+                        onClick = { viewModel.setTrackingSuspended(false) },
+                        modifier = Modifier.size(40.dp),
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Icon(Icons.Default.MyLocation, contentDescription = "Recenter")
+                    }
                 }
             }
 
