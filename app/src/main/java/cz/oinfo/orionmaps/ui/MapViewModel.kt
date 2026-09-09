@@ -22,8 +22,11 @@ import androidx.lifecycle.viewModelScope
 import com.google.android.gms.location.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -77,6 +80,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
     private val _recordedTrack = MutableStateFlow<List<Location>>(emptyList())
     val recordedTrack: StateFlow<List<Location>> = _recordedTrack.asStateFlow()
+
+    val hasRecordedData: StateFlow<Boolean> = _recordedTrack
+        .map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    private val _isTrackSaved = MutableStateFlow(true)
+    val isTrackSaved: StateFlow<Boolean> = _isTrackSaved.asStateFlow()
 
     private var fusedLocationProviderClient: FusedLocationProviderClient? = null
     private val locationCallback = object : LocationCallback() {
@@ -530,6 +540,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun startRecording() {
         _isRecording.value = true
+        _isTrackSaved.value = false
         _recordedTrack.value = emptyList()
     }
 
@@ -552,6 +563,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     fun exportTrackToGpxString(): String {
         val track = _recordedTrack.value
         if (track.isEmpty()) return ""
+        
+        _isTrackSaved.value = true
 
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")

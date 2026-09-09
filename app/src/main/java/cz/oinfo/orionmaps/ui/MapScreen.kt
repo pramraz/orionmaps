@@ -658,35 +658,11 @@ fun InteractiveMap(
 
             if (georeference != null) {
                 if (isRecordingEnabled) {
-                    FloatingActionButton(
-                        onClick = {
-                            if (isRecording) {
-                                viewModel.stopRecording()
-                                createGpxLauncher.launch("orion_track.gpx")
-                            } else {
-                                viewModel.startRecording()
-                            }
-                        },
-                        modifier = Modifier.size(44.dp),
-                        containerColor = if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Icon(
-                            if (isRecording) Icons.Default.Stop else Icons.Default.FiberManualRecord,
-                            contentDescription = if (isRecording) "Stop Recording" else "Start Recording",
-                            tint = if (isRecording) Color.Red else LocalContentColor.current
-                        )
-                    }
-
-                    FloatingActionButton(
-                        onClick = { viewModel.setShowRecordedTrack(!showRecordedTrack) },
-                        modifier = Modifier.size(44.dp),
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ) {
-                        Icon(
-                            if (showRecordedTrack) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = "Toggle Track Visibility"
-                        )
-                    }
+                    GpxMenuFab(
+                        viewModel = viewModel,
+                        onExportClick = { createGpxLauncher.launch("orion_track.gpx") },
+                        onLoadClick = { /* PDF/KMZ logic is already top-level */ }
+                    )
                 }
 
                 FloatingActionButton(
@@ -761,6 +737,122 @@ fun InteractiveMap(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun GpxMenuFab(
+    viewModel: MapViewModel,
+    onExportClick: () -> Unit,
+    onLoadClick: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var showDeleteWarning by remember { mutableStateOf(false) }
+
+    val isRecording by viewModel.isRecording.collectAsState()
+    val showRecordedTrack by viewModel.showRecordedTrack.collectAsState()
+    val hasRecordedData by viewModel.hasRecordedData.collectAsState()
+    val isTrackSaved by viewModel.isTrackSaved.collectAsState()
+
+    Box {
+        FloatingActionButton(
+            onClick = { expanded = true },
+            modifier = Modifier.size(44.dp),
+            containerColor = if (isRecording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+        ) {
+            Icon(
+                if (isRecording) Icons.Default.RadioButtonChecked else Icons.Default.Route,
+                contentDescription = "GPX Menu",
+                tint = if (isRecording) Color.Red else LocalContentColor.current
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (isRecording) "Stop Recording" else "Start Recording") },
+                onClick = {
+                    if (isRecording) {
+                        viewModel.stopRecording()
+                        onExportClick()
+                    } else {
+                        viewModel.startRecording()
+                    }
+                    expanded = false
+                },
+                leadingIcon = {
+                    Icon(
+                        if (isRecording) Icons.Default.Stop else Icons.Default.FiberManualRecord,
+                        contentDescription = null,
+                        tint = if (isRecording) Color.Red else Color.Unspecified
+                    )
+                }
+            )
+            
+            DropdownMenuItem(
+                text = { Text(if (showRecordedTrack) "Hide Track" else "Show Track") },
+                onClick = {
+                    viewModel.setShowRecordedTrack(!showRecordedTrack)
+                    expanded = false
+                },
+                enabled = hasRecordedData || isRecording,
+                leadingIcon = {
+                    Icon(
+                        if (showRecordedTrack) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = null
+                    )
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text("Save Track") },
+                onClick = {
+                    onExportClick()
+                    expanded = false
+                },
+                enabled = !isRecording && hasRecordedData,
+                leadingIcon = { Icon(Icons.Default.Save, contentDescription = null) }
+            )
+
+            DropdownMenuItem(
+                text = { Text("Clear Track") },
+                onClick = {
+                    if (isTrackSaved) {
+                        viewModel.clearRecordedTrack()
+                    } else {
+                        showDeleteWarning = true
+                    }
+                    expanded = false
+                },
+                enabled = !isRecording && hasRecordedData,
+                leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) }
+            )
+        }
+    }
+
+    if (showDeleteWarning) {
+        AlertDialog(
+            onDismissRequest = { showDeleteWarning = false },
+            title = { Text("Unsaved Track") },
+            text = { Text("The current track is not saved. Do you want to delete it anyway?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearRecordedTrack()
+                        showDeleteWarning = false
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteWarning = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
