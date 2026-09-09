@@ -73,12 +73,22 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _uiState.value = MapUiState.Loading
+            
+            // CRITICAL: Use .commit() to ensure the flag is written to disk IMMEDIATELY
+            sharedPreferences.edit().putBoolean("is_loading_map", true).commit()
+
             val bitmap = renderPdfFirstPage(uri)
+            
+            // Clear loading flag
+            sharedPreferences.edit().remove("is_loading_map").apply()
+
             if (bitmap != null) {
                 _uiState.value = MapUiState.Success(bitmap)
                 addRecentMap(uri)
             } else {
-                _uiState.value = MapUiState.Error("Failed to render PDF")
+                if (_uiState.value !is MapUiState.Error) {
+                    _uiState.value = MapUiState.Error("Failed to render PDF")
+                }
             }
         }
     }
@@ -95,43 +105,192 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _uiState.value = MapUiState.Loading
+
+            // CRITICAL: Use .commit() to ensure the flag is written to disk IMMEDIATELY
+            sharedPreferences.edit().putBoolean("is_loading_map", true).commit()
             
             withContext(Dispatchers.IO) {
                 try {
-                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val contentResolver = getApplication<Application>().contentResolver
+                    
+                    // First pass: Find KML and parse tile structure
+                    var kmlContent: String? = null
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
                         ZipInputStream(inputStream).use { zipInputStream ->
-                            var bitmap: Bitmap? = null
-                            var georeference: MapGeoreference? = null
-                            
                             var entry = zipInputStream.nextEntry
                             while (entry != null) {
-                                when {
-                                    entry.name.endsWith(".png", ignoreCase = true) || entry.name.endsWith(".jpg", ignoreCase = true) -> {
-                                        bitmap = BitmapFactory.decodeStream(zipInputStream)
-                                    }
-                                    entry.name.endsWith(".kml", ignoreCase = true) -> {
-                                        val kmlContent = zipInputStream.bufferedReader().readText()
-                                        georeference = parseKmlGeoreference(kmlContent)
+                                if (entry.name.endsWith(".kml", ignoreCase = true)) {
+                                    kmlContent = zipInputStream.bufferedReader().readText()
+                                    break
+                                }
+                                entry = zipInputStream.nextEntry
+                            }
+                        }
+                    }
+
+                    if (kmlContent == null) {
+                        _uiState.value = MapUiState.Error("No KML found in KMZ")
+                        return@withContext
+                    }
+
+                    val overlays = parseKmlGroundOverlays(kmlContent!!)
+                    if (overlays.isEmpty()) {
+                        _uiState.value = MapUiState.Error("No map overlays found in KML")
+                        return@withContext
+                    }
+
+                    // Second pass: Load images and stitch
+                    val tileBitmaps = mutableMapOf<String, Bitmap>()
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        ZipInputStream(inputStream).use { zipInputStream ->
+                            var entry = zipInputStream.nextEntry
+                            while (entry != null) {
+                                val normalizedName = entry.name.replace("\\", "/")
+                                if (overlays.any { it.href.contains(normalizedName) || normalizedName.contains(it.href) }) {
+                                    try {
+                                        // REQUIREMENT 2: KMZ Image Downsampling
+                                        val bytes = zipInputStream.readBytes()
+                                        
+                                        val options = BitmapFactory.Options().apply {
+                                            inJustDecodeBounds = true
+                                        }
+                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                                        
+                                        val MAX_TILE_DIMENSION = 4096
+                                        var inSampleSize = 1
+                                        if (options.outHeight > MAX_TILE_DIMENSION || options.outWidth > MAX_TILE_DIMENSION) {
+                                            val halfHeight = options.outHeight / 2
+                                            val halfWidth = options.outWidth / 2
+                                            while (halfHeight / inSampleSize >= MAX_TILE_DIMENSION || halfWidth / inSampleSize >= MAX_TILE_DIMENSION) {
+                                                inSampleSize *= 2
+                                            }
+                                        }
+                                        
+                                        options.inJustDecodeBounds = false
+                                        options.inSampleSize = inSampleSize
+                                        
+                                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                                        if (bmp != null) {
+                                            tileBitmaps[normalizedName] = bmp
+                                        }
+                                    } catch (e: OutOfMemoryError) {
+                                        _uiState.value = MapUiState.Error("Memory limit reached while loading tiles")
+                                        return@withContext
                                     }
                                 }
                                 entry = zipInputStream.nextEntry
                             }
-
-                            if (bitmap != null) {
-                                _uiState.value = MapUiState.Success(bitmap, georeference)
-                                withContext(Dispatchers.Main) {
-                                    addRecentMap(uri)
-                                }
-                            } else {
-                                _uiState.value = MapUiState.Error("No image found in KMZ")
-                            }
                         }
+                    }
+
+                    if (tileBitmaps.isEmpty()) {
+                        _uiState.value = MapUiState.Error("No images found in KMZ for the specified overlays")
+                        return@withContext
+                    }
+
+                    val result = stitchTiles(overlays, tileBitmaps)
+                    if (result != null) {
+                        _uiState.value = MapUiState.Success(result.first, result.second)
+                        withContext(Dispatchers.Main) {
+                            addRecentMap(uri)
+                        }
+                    } else if (_uiState.value !is MapUiState.Error) {
+                        _uiState.value = MapUiState.Error("Failed to stitch map tiles")
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     _uiState.value = MapUiState.Error("Failed to load KMZ: ${e.message}")
+                } finally {
+                    // Clear loading flag
+                    sharedPreferences.edit().remove("is_loading_map").apply()
                 }
             }
+        }
+    }
+
+    private data class GroundOverlay(
+        val href: String,
+        val north: Double,
+        val south: Double,
+        val east: Double,
+        val west: Double,
+        val rotation: Double
+    )
+
+    private fun parseKmlGroundOverlays(kml: String): List<GroundOverlay> {
+        val overlays = mutableListOf<GroundOverlay>()
+        val overlayRegex = "<GroundOverlay>([\\s\\S]*?)</GroundOverlay>".toRegex()
+        val hrefRegex = "<href>([\\s\\S]*?)</href>".toRegex()
+        
+        overlayRegex.findAll(kml).forEach { match ->
+            val content = match.groupValues[1]
+            val href = hrefRegex.find(content)?.groupValues?.get(1)?.trim()?.replace("\\", "/") ?: ""
+            val north = extractCoord(content, "north")
+            val south = extractCoord(content, "south")
+            val east = extractCoord(content, "east")
+            val west = extractCoord(content, "west")
+            val rotation = extractCoord(content, "rotation") ?: 0.0
+
+            if (href.isNotEmpty() && north != null && south != null && east != null && west != null) {
+                overlays.add(GroundOverlay(href, north, south, east, west, rotation))
+            }
+        }
+        return overlays
+    }
+
+    private fun stitchTiles(
+        overlays: List<GroundOverlay>,
+        tileBitmaps: Map<String, Bitmap>
+    ): Pair<Bitmap, MapGeoreference>? {
+        // Calculate overall bounds
+        val minNorth = overlays.minOf { it.north }
+        val maxNorth = overlays.maxOf { it.north }
+        val minSouth = overlays.minOf { it.south }
+        val maxSouth = overlays.maxOf { it.south }
+        val minEast = overlays.minOf { it.east }
+        val maxEast = overlays.maxOf { it.east }
+        val minWest = overlays.minOf { it.west }
+        val maxWest = overlays.maxOf { it.west }
+
+        val overallNorth = maxNorth
+        val overallSouth = minSouth
+        val overallEast = maxEast
+        val overallWest = minWest
+        
+        // Use rotation from first overlay (assuming all have same/similar rotation for stitching)
+        val rotation = overlays.first().rotation
+
+        // Map relative positions
+        // Since OCAD tiles might have different sizes or overlaps, we use geographic interpolation
+        // but to keep it simple and high-res, we'll try to find a base resolution (pixels per degree)
+        val firstOverlay = overlays.first()
+        val firstBmp = tileBitmaps.entries.find { firstOverlay.href.contains(it.key) || it.key.contains(firstOverlay.href) }?.value 
+            ?: return null
+            
+        val pixelsPerLat = firstBmp.height / (firstOverlay.north - firstOverlay.south)
+        val pixelsPerLon = firstBmp.width / (firstOverlay.east - firstOverlay.west)
+
+        val totalWidth = ((overallEast - overallWest) * pixelsPerLon).toInt()
+        val totalHeight = ((overallNorth - overallSouth) * pixelsPerLat).toInt()
+
+        return try {
+            val combinedBmp = Bitmap.createBitmap(totalWidth, totalHeight, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(combinedBmp)
+            canvas.drawColor(Color.WHITE)
+
+            overlays.forEach { overlay ->
+                val bmp = tileBitmaps.entries.find { overlay.href.contains(it.key) || it.key.contains(overlay.href) }?.value
+                if (bmp != null) {
+                    val left = ((overlay.west - overallWest) * pixelsPerLon).toFloat()
+                    val top = ((overallNorth - overlay.north) * pixelsPerLat).toFloat()
+                    canvas.drawBitmap(bmp, left, top, null)
+                }
+            }
+
+            Pair(combinedBmp, MapGeoreference(overallNorth, overallSouth, overallEast, overallWest, rotation))
+        } catch (e: OutOfMemoryError) {
+            _uiState.value = MapUiState.Error("OutOfMemory while stitching tiles")
+            null
         }
     }
 
@@ -220,12 +379,18 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Requirement: Open last opened map
                 if (maps.isNotEmpty()) {
-                    val lastUri = Uri.parse(maps[0].uriString)
-                    val fileName = getFileName(lastUri) ?: ""
-                    if (fileName.endsWith(".kmz", ignoreCase = true)) {
-                        loadKmz(lastUri)
+                    // Safety: Check if previous load crashed - CRITICAL: use .commit() to clear it
+                    if (sharedPreferences.getBoolean("is_loading_map", false)) {
+                        sharedPreferences.edit().remove("is_loading_map").commit()
+                        _uiState.value = MapUiState.Error("Previous load failed. This map might be too large.")
                     } else {
-                        loadPdf(lastUri)
+                        val lastUri = Uri.parse(maps[0].uriString)
+                        val fileName = getFileName(lastUri) ?: ""
+                        if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                            loadKmz(lastUri)
+                        } else {
+                            loadPdf(lastUri)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -287,20 +452,26 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 PdfRenderer(pfd).use { renderer ->
                     if (renderer.pageCount > 0) {
                         renderer.openPage(0).use { page ->
-                            // Requirement 3: High-Resolution Rendering
-                            // Using a 4.0x scale factor for crisp rendering
-                            val scaleFactor = 4.0f
-                            val width = (page.width * scaleFactor).toInt()
-                            val height = (page.height * scaleFactor).toInt()
+                            // REQUIREMENT 1: Dynamic PDF Scaling
+                            val MAX_DIMENSION = 4096f
+                            val scale = minOf(MAX_DIMENSION / page.width, MAX_DIMENSION / page.height)
+                            
+                            val width = (page.width * scale).toInt()
+                            val height = (page.height * scale).toInt()
 
-                            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                            try {
+                                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
-                            // Ensure white background (Requirement 1 - rendering level)
-                            val canvas = Canvas(bitmap)
-                            canvas.drawColor(Color.WHITE)
+                                // Ensure white background (Requirement 1 - rendering level)
+                                val canvas = Canvas(bitmap)
+                                canvas.drawColor(Color.WHITE)
 
-                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                            return@withContext bitmap
+                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                return@withContext bitmap
+                            } catch (e: OutOfMemoryError) {
+                                _uiState.value = MapUiState.Error("PDF rendering failed: Out of memory")
+                                return@withContext null
+                            }
                         }
                     }
                 }
