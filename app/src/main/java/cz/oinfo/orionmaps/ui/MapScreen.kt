@@ -82,34 +82,39 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
-                    // Requirement 2: Fix Pivot Point for Zoom & Rotation (Centroid math)
+                    // Correcting the Gesture Math:
+                    // To keep the point under the fingers (centroid) fixed:
+                    // 1. We rotate and scale the current translation (offset) and the centroid point.
                     
-                    // 1. Calculate the change in scale
                     val oldScale = scale
-                    scale *= zoom
-                    scale = scale.coerceIn(0.5f, 15f) // Increased max scale for high-res map
-                    
-                    // 2. Adjust offset for Zoom around Centroid
-                    // The formula: offset = (offset - centroid) * (newScale / oldScale) + centroid
-                    // But since we are accumulating 'offset', we add the delta.
-                    val zoomFactor = scale / oldScale
-                    offset = (offset - centroid) * zoomFactor + centroid
-                    
-                    // 3. Adjust offset for Rotation around Centroid
-                    rotation += rotate
+                    scale = (scale * zoom).coerceIn(0.5f, 15f)
+                    val scaleFactor = scale / oldScale
+
                     val rotationRad = rotate * (PI.toFloat() / 180f)
+                    
+                    // The correct formula for centroid-based transformation:
+                    // newOffset = (offset - centroid) * scaleFactor + centroid + pan
+                    // AND accounting for rotation:
+                    
+                    // Step 1: Pan is simply added
+                    offset += pan
+                    
+                    // Step 2: Rotate and Scale around the centroid
+                    // Shift the coordinate system so the centroid is at the origin
+                    val centeredOffset = offset - centroid
+                    
+                    // Rotate the vector from centroid to current offset
                     val cosR = cos(rotationRad)
                     val sinR = sin(rotationRad)
-                    
-                    val relativeCentroid = centroid - offset
-                    val rotatedCentroid = Offset(
-                        relativeCentroid.x * cosR - relativeCentroid.y * sinR,
-                        relativeCentroid.x * sinR + relativeCentroid.y * cosR
+                    val rotatedOffset = Offset(
+                        centeredOffset.x * cosR - centeredOffset.y * sinR,
+                        centeredOffset.x * sinR + centeredOffset.y * cosR
                     )
-                    offset += relativeCentroid - rotatedCentroid
-
-                    // 4. Apply Pan
-                    offset += pan
+                    
+                    // Scale and shift back
+                    offset = rotatedOffset * scaleFactor + centroid
+                    
+                    rotation += rotate
                 }
             }
     ) {
@@ -118,7 +123,6 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             contentDescription = "PDF Map",
             modifier = Modifier
                 .fillMaxSize()
-                // Requirement 1: White Background
                 .background(Color.White)
                 .graphicsLayer(
                     scaleX = scale,
