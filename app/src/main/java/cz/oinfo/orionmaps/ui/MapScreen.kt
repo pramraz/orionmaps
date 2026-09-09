@@ -101,8 +101,12 @@ fun MapScreen(
         when (val state = uiState) {
             is MapUiState.Empty -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Button(onClick = { launcher.launch(arrayOf("application/pdf", "application/vnd.google-earth.kmz")) }) {
-                        Text("Open Map (PDF/KMZ)")
+                    Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
+                        Text("Open PDF map")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
+                        Text("Open KMZ map")
                     }
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -122,18 +126,22 @@ fun MapScreen(
                 InteractiveMap(
                     bitmap = state.bitmap,
                     georeference = state.georeference,
-                    onOpenNewMap = { launcher.launch(arrayOf("application/pdf", "application/vnd.google-earth.kmz")) },
+                    onOpenNewPdfMap = { launcher.launch(arrayOf("application/pdf")) },
+                    onOpenNewKmzMap = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) },
                     viewModel = viewModel
                 )
             }
             is MapUiState.Error -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = state.message, color = MaterialTheme.colorScheme.error)
-                    Button(
-                        onClick = { launcher.launch(arrayOf("application/pdf", "application/vnd.google-earth.kmz")) },
-                        modifier = Modifier.padding(top = 16.dp)
-                    ) {
-                        Text("Try Again")
+                    Row(modifier = Modifier.padding(top = 16.dp)) {
+                        Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
+                            Text("PDF")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
+                            Text("KMZ")
+                        }
                     }
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -171,7 +179,8 @@ fun MapScreen(
 fun InteractiveMap(
     bitmap: android.graphics.Bitmap,
     georeference: MapGeoreference?,
-    onOpenNewMap: () -> Unit,
+    onOpenNewPdfMap: () -> Unit,
+    onOpenNewKmzMap: () -> Unit,
     viewModel: MapViewModel
 ) {
     var scale by remember { mutableStateOf(1f) }
@@ -373,12 +382,20 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.SettingsBackupRestore, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Open new map") },
+                        text = { Text("Open PDF map") },
                         onClick = {
-                            onOpenNewMap()
+                            onOpenNewPdfMap()
                             showSettingsMenu = false
                         },
-                        leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) }
+                        leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Open KMZ map") },
+                        onClick = {
+                            onOpenNewKmzMap()
+                            showSettingsMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) }
                     )
                     DropdownMenuItem(
                         text = { Text("Recent maps") },
@@ -422,7 +439,13 @@ fun InteractiveMap(
                 RecentMapsDialog(
                     onDismiss = { showRecentMapsDialog = false },
                     onMapSelected = { uriString ->
-                        viewModel.loadPdf(android.net.Uri.parse(uriString))
+                        val uri = android.net.Uri.parse(uriString)
+                        val fileName = viewModel.getFileName(uri) ?: ""
+                        if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                            viewModel.loadKmz(uri)
+                        } else {
+                            viewModel.loadPdf(uri)
+                        }
                         showRecentMapsDialog = false
                     },
                     viewModel = viewModel
