@@ -76,6 +76,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     private val sensorManager = application.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
+    private var smoothedSin = 0.0
+    private var smoothedCos = 0.0
+    private val ALPHA = 0.2f
+
     init {
         loadRecentMaps()
     }
@@ -473,8 +477,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
             val orientation = FloatArray(3)
             SensorManager.getOrientation(rotationMatrix, orientation)
-            val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
-            _compassBearing.value = (azimuth + 360) % 360
+            
+            val rawAzimuthRadians = orientation[0].toDouble()
+            
+            // Exponential Moving Average on vector components to handle 360/0 wrap-around
+            smoothedSin = ALPHA * kotlin.math.sin(rawAzimuthRadians) + (1 - ALPHA) * smoothedSin
+            smoothedCos = ALPHA * kotlin.math.cos(rawAzimuthRadians) + (1 - ALPHA) * smoothedCos
+            
+            val smoothedBearing = Math.toDegrees(kotlin.math.atan2(smoothedSin, smoothedCos)).toFloat()
+            _compassBearing.value = (smoothedBearing + 360f) % 360f
         }
     }
 
