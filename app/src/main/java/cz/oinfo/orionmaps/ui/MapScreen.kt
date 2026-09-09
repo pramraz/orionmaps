@@ -201,7 +201,7 @@ fun MapScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(Color.White.copy(alpha = 0.7f))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
                 .align(Alignment.TopCenter)
         )
 
