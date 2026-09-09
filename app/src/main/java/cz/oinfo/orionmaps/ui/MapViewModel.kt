@@ -140,43 +140,41 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         sharedPreferences.edit().remove("maps_json").apply()
     }
 
+    fun clearMap() {
+        _uiState.value = MapUiState.Empty
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        clearMap()
+    }
+
     private suspend fun renderPdfFirstPage(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
-        var pfd: ParcelFileDescriptor? = null
-        var renderer: PdfRenderer? = null
-        var page: PdfRenderer.Page? = null
         try {
-            pfd = getApplication<Application>().contentResolver.openFileDescriptor(uri, "r")
-            if (pfd != null) {
-                renderer = PdfRenderer(pfd)
-                if (renderer.pageCount > 0) {
-                    page = renderer.openPage(0)
-                    
-                    // Requirement 3: High-Resolution Rendering
-                    // Using a 4.0x scale factor for crisp rendering
-                    val scaleFactor = 4.0f
-                    val width = (page.width * scaleFactor).toInt()
-                    val height = (page.height * scaleFactor).toInt()
+            getApplication<Application>().contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    if (renderer.pageCount > 0) {
+                        renderer.openPage(0).use { page ->
+                            // Requirement 3: High-Resolution Rendering
+                            // Using a 4.0x scale factor for crisp rendering
+                            val scaleFactor = 4.0f
+                            val width = (page.width * scaleFactor).toInt()
+                            val height = (page.height * scaleFactor).toInt()
 
-                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    
-                    // Ensure white background (Requirement 1 - rendering level)
-                    val canvas = Canvas(bitmap)
-                    canvas.drawColor(Color.WHITE)
+                            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    return@withContext bitmap
+                            // Ensure white background (Requirement 1 - rendering level)
+                            val canvas = Canvas(bitmap)
+                            canvas.drawColor(Color.WHITE)
+
+                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            return@withContext bitmap
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        } finally {
-            try {
-                page?.close()
-                renderer?.close()
-                pfd?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
         }
         null
     }
