@@ -8,6 +8,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.net.Uri
 import android.os.Looper
@@ -30,7 +34,11 @@ data class RecentMap(val uriString: String, val name: String)
 
 data class MapGeoreference(val north: Double, val south: Double, val east: Double, val west: Double, val rotation: Double = 0.0)
 
-class MapViewModel(application: Application) : AndroidViewModel(application) {
+enum class GpsMode {
+    HIDDEN, FREE, FOLLOW
+}
+
+class MapViewModel(application: Application) : AndroidViewModel(application), SensorEventListener {
 
     private val sharedPreferences = application.getSharedPreferences("recent_maps", Context.MODE_PRIVATE)
 
@@ -49,12 +57,24 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentLocation = MutableStateFlow<Location?>(null)
     val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
 
+    private val _gpsMode = MutableStateFlow(GpsMode.HIDDEN)
+    val gpsMode: StateFlow<GpsMode> = _gpsMode.asStateFlow()
+
+    private val _isTrackingSuspended = MutableStateFlow(false)
+    val isTrackingSuspended: StateFlow<Boolean> = _isTrackingSuspended.asStateFlow()
+
+    private val _compassBearing = MutableStateFlow(0f)
+    val compassBearing: StateFlow<Float> = _compassBearing.asStateFlow()
+
     private var fusedLocationProviderClient: FusedLocationProviderClient? = null
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             _currentLocation.value = result.lastLocation
         }
     }
+
+    private val sensorManager = application.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
     init {
         loadRecentMaps()
@@ -433,6 +453,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: SecurityException) {
             e.printStackTrace()
         }
+
+        rotationVectorSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
     }
 
     fun stopLocationUpdates() {
@@ -440,6 +464,35 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
         fusedLocationProviderClient = null
         _currentLocation.value = null
+        sensorManager.unregisterListener(this)
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
+            val rotationMatrix = FloatArray(9)
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+            val orientation = FloatArray(3)
+            SensorManager.getOrientation(rotationMatrix, orientation)
+            val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+            _compassBearing.value = (azimuth + 360) % 360
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    fun cycleGpsMode() {
+        _gpsMode.value = when (_gpsMode.value) {
+            GpsMode.HIDDEN -> GpsMode.FREE
+            GpsMode.FREE -> GpsMode.FOLLOW
+            GpsMode.FOLLOW -> GpsMode.HIDDEN
+        }
+        if (_gpsMode.value == GpsMode.FOLLOW) {
+            _isTrackingSuspended.value = false
+        }
+    }
+
+    fun setTrackingSuspended(suspended: Boolean) {
+        _isTrackingSuspended.value = suspended
     }
 
     override fun onCleared() {

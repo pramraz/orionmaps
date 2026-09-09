@@ -232,6 +232,9 @@ fun InteractiveMap(
     var rotation by remember { mutableStateOf(0f) }
     
     val currentLocation by viewModel.currentLocation.collectAsState()
+    val gpsMode by viewModel.gpsMode.collectAsState()
+    val isTrackingSuspended by viewModel.isTrackingSuspended.collectAsState()
+    val compassBearing by viewModel.compassBearing.collectAsState()
     
     var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
     var notificationText by remember { mutableStateOf("") }
@@ -255,8 +258,12 @@ fun InteractiveMap(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { containerSize = it.size }
-            .pointerInput(gestureMode) {
+            .pointerInput(gestureMode, gpsMode) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
+                    if (gpsMode == GpsMode.FOLLOW && (pan != Offset.Zero || zoom != 1f)) {
+                        viewModel.setTrackingSuspended(true)
+                    }
+
                     val effectiveZoom = if (gestureMode == GestureMode.LOCK_ZOOM) 1f else zoom
                     val effectiveRotation = if (gestureMode == GestureMode.LOCK_ROTATION) 0f else rotate
 
@@ -291,7 +298,63 @@ fun InteractiveMap(
                 }
             }
     ) {
-        Image(
+        val effectiveRotation = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) {
+        -compassBearing
+    } else {
+        rotation
+    }
+
+    // Effect to handle map centering in FOLLOW mode
+    LaunchedEffect(currentLocation, gpsMode, isTrackingSuspended, scale, effectiveRotation, containerSize) {
+        if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
+            val percentPos = getMapPercentages(currentLocation!!, georeference)
+            
+            val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            val containerRatio = containerSize.width.toFloat() / containerSize.height.toFloat()
+
+            val renderedWidth: Float
+            val renderedHeight: Float
+            val renderOffsetX: Float
+            val renderOffsetY: Float
+
+            if (imgRatio > containerRatio) {
+                renderedWidth = containerSize.width.toFloat()
+                renderedHeight = containerSize.width.toFloat() / imgRatio
+                renderOffsetX = 0f
+                renderOffsetY = (containerSize.height.toFloat() - renderedHeight) / 2f
+            } else {
+                renderedHeight = containerSize.height.toFloat()
+                renderedWidth = containerSize.height.toFloat() * imgRatio
+                renderOffsetX = (containerSize.width.toFloat() - renderedWidth) / 2f
+                renderOffsetY = 0f
+            }
+
+            val baseDotX = renderOffsetX + percentPos.first * renderedWidth
+            val baseDotY = renderOffsetY + percentPos.second * renderedHeight
+
+            // Calculate offset to center baseDotX, baseDotY
+            // Target is container center
+            val centerX = containerSize.width / 2f
+            val centerY = containerSize.height / 2f
+
+            val angleInRadians = effectiveRotation * PI / 180.0
+            val cos = cos(angleInRadians).toFloat()
+            val sin = sin(angleInRadians).toFloat()
+
+            // scaled position relative to top-left of rendered image
+            val sx = baseDotX * scale
+            val sy = baseDotY * scale
+
+            // rotated
+            val rx = sx * cos - sy * sin
+            val ry = sx * sin + sy * cos
+
+            offset = Offset(centerX - rx, centerY - ry)
+            rotation = effectiveRotation
+        }
+    }
+
+    Image(
             bitmap = bitmap.asImageBitmap(),
             contentDescription = "PDF Map",
             modifier = Modifier
@@ -304,12 +367,12 @@ fun InteractiveMap(
                     translationY = offset.y
                     scaleX = scale
                     scaleY = scale
-                    rotationZ = rotation
+                    rotationZ = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) effectiveRotation else rotation
                 }
         )
 
 // GPS Dot
-        if (georeference != null && currentLocation != null && containerSize.width > 0) {
+        if (gpsMode != GpsMode.HIDDEN && georeference != null && currentLocation != null && containerSize.width > 0) {
             val percentPos = getMapPercentages(
                 currentLocation!!,
                 georeference
@@ -457,6 +520,33 @@ fun InteractiveMap(
                         },
                         leadingIcon = { Icon(Icons.Default.SettingsSuggest, contentDescription = null) }
                     )
+                }
+            }
+
+            FloatingActionButton(
+                onClick = { viewModel.cycleGpsMode() },
+                modifier = Modifier.size(44.dp),
+                containerColor = when (gpsMode) {
+                    GpsMode.HIDDEN -> MaterialTheme.colorScheme.surfaceVariant
+                    GpsMode.FREE -> MaterialTheme.colorScheme.primaryContainer
+                    GpsMode.FOLLOW -> MaterialTheme.colorScheme.tertiaryContainer
+                }
+            ) {
+                val icon = when (gpsMode) {
+                    GpsMode.HIDDEN -> Icons.Default.LocationOff
+                    GpsMode.FREE -> Icons.Default.LocationOn
+                    GpsMode.FOLLOW -> Icons.Default.Navigation
+                }
+                Icon(icon, contentDescription = "Cycle GPS Mode")
+            }
+
+            if (gpsMode == GpsMode.FOLLOW && isTrackingSuspended) {
+                SmallFloatingActionButton(
+                    onClick = { viewModel.setTrackingSuspended(false) },
+                    modifier = Modifier.size(40.dp),
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Icon(Icons.Default.MyLocation, contentDescription = "Recenter")
                 }
             }
 
