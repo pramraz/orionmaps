@@ -3,8 +3,6 @@ package cz.oinfo.orionmaps.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
@@ -14,8 +12,8 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -194,52 +192,17 @@ fun InteractiveMap(bitmap: android.graphics.Bitmap) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Long-Press Reset Button with Indicator
-            var isPressingReset by remember { mutableStateOf(false) }
-            val resetProgress by animateFloatAsState(
-                targetValue = if (isPressingReset) 1f else 0f,
-                animationSpec = tween(durationMillis = 1000),
-                label = "ResetProgress"
-            )
-
-            if (resetProgress == 1f && isPressingReset) {
-                LaunchedEffect(Unit) {
+            // Reset Button (Single Click)
+            SmallFloatingActionButton(
+                onClick = {
                     scale = 1f
                     rotation = 0f
                     offset = Offset.Zero
                     triggerNotification("Map Reset")
-                    isPressingReset = false
-                }
-            }
-
-            Box(contentAlignment = Alignment.Center) {
-                if (isPressingReset) {
-                    CircularProgressIndicator(
-                        progress = { resetProgress },
-                        modifier = Modifier.size(48.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 4.dp,
-                    )
-                }
-                
-                SmallFloatingActionButton(
-                    onClick = { /* Long press handled by pointerInput */ },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                isPressingReset = true
-                                try {
-                                    awaitRelease()
-                                } finally {
-                                    isPressingReset = false
-                                }
-                            }
-                        )
-                    }
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Reset Map (Long Press)")
-                }
+                },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Icon(Icons.Default.SettingsBackupRestore, contentDescription = "Reset Map")
             }
 
             // Mode Toggle Button
