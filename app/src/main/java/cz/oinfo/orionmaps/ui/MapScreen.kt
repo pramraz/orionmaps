@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,7 +29,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -416,7 +419,8 @@ fun InteractiveMap(
                         rotationZ = rotation
                     }
             ) {
-                Box(
+                // Directional Marker
+                Canvas(
                     modifier = Modifier
                         .offset {
                             IntOffset(
@@ -424,11 +428,50 @@ fun InteractiveMap(
                                 baseDotY.roundToInt()
                             )
                         }
-                        .size(6.dp)
-                        .offset((-3).dp, (-3).dp) // Vycentrování středu tečky
-                        .clip(CircleShape)
-                        .background(Color.Blue)
-                )
+                        .size(12.dp)
+                        .offset((-6).dp, (-6).dp)
+                        .graphicsLayer {
+                            // Points to compass north. Subtract map rotation because parent is rotated.
+                            rotationZ = compassBearing - rotation
+                        }
+                ) {
+                    val w = this.size.width
+                    val h = this.size.height
+                    val center = androidx.compose.ui.geometry.Offset(w / 2f, h / 2f)
+                    val radius = w / 3.5f
+
+                    val markerPath = Path().apply {
+                        // The "beak" pointing up (0 degrees)
+                        moveTo(w / 2f, h * 0.1f)
+                        lineTo(w * 0.75f, h * 0.45f)
+                        // Arc for the circle part
+                        arcTo(
+                            rect = androidx.compose.ui.geometry.Rect(
+                                center.x - radius,
+                                center.y - radius,
+                                center.x + radius,
+                                center.y + radius
+                            ),
+                            startAngleDegrees = -45f,
+                            sweepAngleDegrees = 270f,
+                            forceMoveTo = false
+                        )
+                        lineTo(w / 2f, h * 0.1f)
+                        close()
+                    }
+
+                    // White outline for visibility
+                    drawPath(
+                        path = markerPath,
+                        color = Color.White,
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                    // Blue fill
+                    drawPath(
+                        path = markerPath,
+                        color = Color(0xFF2196F3) // Bright Material Blue
+                    )
+                }
             }
         }
 
