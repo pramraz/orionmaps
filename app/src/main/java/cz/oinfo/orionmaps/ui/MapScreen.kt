@@ -428,8 +428,8 @@ fun InteractiveMap(
                                 baseDotY.roundToInt()
                             )
                         }
-                        .size(12.dp)
-                        .offset((-6).dp, (-6).dp)
+                        .size(4.dp)
+                        .offset((-2).dp, (-2).dp)
                         .graphicsLayer {
                             // Points to compass north. Subtract map rotation because parent is rotated.
                             rotationZ = compassBearing - rotation
@@ -438,38 +438,38 @@ fun InteractiveMap(
                     val w = this.size.width
                     val h = this.size.height
                     val center = androidx.compose.ui.geometry.Offset(w / 2f, h / 2f)
-                    val radius = w / 3.5f
+                    val dotRadius = w / 4.5f
 
-                    val markerPath = Path().apply {
-                        // The "beak" pointing up (0 degrees)
-                        moveTo(w / 2f, h * 0.1f)
-                        lineTo(w * 0.75f, h * 0.45f)
-                        // Arc for the circle part
-                        arcTo(
-                            rect = androidx.compose.ui.geometry.Rect(
-                                center.x - radius,
-                                center.y - radius,
-                                center.x + radius,
-                                center.y + radius
-                            ),
-                            startAngleDegrees = -45f,
-                            sweepAngleDegrees = 270f,
-                            forceMoveTo = false
-                        )
-                        lineTo(w / 2f, h * 0.1f)
+                    // 1. Draw Heading Triangle (Beak) - slightly offset from center
+                    val trianglePath = Path().apply {
+                        moveTo(w / 2f, h * 0.01f) // Top tip
+                        lineTo(w * 0.75f, h * 0.3f) // Right base
+                        lineTo(w * 0.25f, h * 0.3f) // Left base
                         close()
                     }
-
-                    // White outline for visibility
+                    
+                    // White outline for triangle
                     drawPath(
-                        path = markerPath,
+                        path = trianglePath,
                         color = Color.White,
-                        style = Stroke(width = 2.dp.toPx())
+                        style = Stroke(width = 0.5.dp.toPx())
                     )
-                    // Blue fill
+                    // Blue fill for triangle
                     drawPath(
-                        path = markerPath,
-                        color = Color(0xFF2196F3) // Bright Material Blue
+                        path = trianglePath,
+                        color = Color(0xFF2196F3)
+                    )
+
+                    // 2. Draw Position Dot with White Outline
+                    drawCircle(
+                        color = Color.White,
+                        radius = dotRadius + 0.5.dp.toPx(),
+                        center = center
+                    )
+                    drawCircle(
+                        color = Color(0xFF2196F3),
+                        radius = dotRadius,
+                        center = center
                     )
                 }
             }
