@@ -33,7 +33,8 @@
     <string name="track_recording_desc">Enable path tracking and GPX export</string>
     <string name="no_recent_maps">No recent maps</string>
     <string name="clear_list">Clear List</string>
-    <string name="error_opening_map">Error opening map</string>
+    <string name="error_opening_map">Failed to load map</string>
+    <string name="open_last_map">Open last map</string>
     <string name="recenter">Recenter</string>
     <string name="cycle_gps_mode">Cycle GPS Mode</string>
     <string name="toggle_gesture_mode">Toggle Gesture Mode</string>

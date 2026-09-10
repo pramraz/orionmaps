@@ -417,7 +417,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     }
 
     private fun loadRecentMaps() {
-        val jsonString = sharedPreferences.getString("maps_json", null)
+        val jsonString = sharedPreferences?.getString("maps_json", null)
         if (jsonString != null) {
             try {
                 val jsonArray = JSONArray(jsonString)
@@ -428,24 +428,27 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                 }
                 _recentMaps.value = maps
                 
-                // Requirement: Open last opened map
-                if (maps.isNotEmpty()) {
-                    // Safety: Check if previous load crashed - CRITICAL: use .commit() to clear it
-                    if (sharedPreferences.getBoolean("is_loading_map", false)) {
-                        sharedPreferences.edit().remove("is_loading_map").commit()
-                        _uiState.value = MapUiState.Error("Previous load failed. This map might be too large.")
-                    } else {
-                        val lastUri = Uri.parse(maps[0].uriString)
-                        val fileName = getFileName(lastUri) ?: ""
-                        if (fileName.endsWith(".kmz", ignoreCase = true)) {
-                            loadKmz(lastUri)
-                        } else {
-                            loadPdf(lastUri)
-                        }
-                    }
+                // Requirement: Open last opened map is now manual via UI
+                // Safety: Check if previous load crashed - CRITICAL: use .commit() to clear it
+                if (sharedPreferences?.getBoolean("is_loading_map", false) == true) {
+                    sharedPreferences?.edit()?.remove("is_loading_map")?.commit()
+                    _uiState.value = MapUiState.Error("Previous load failed. This map might be too large.")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun openLastMap() {
+        val maps = _recentMaps.value
+        if (maps.isNotEmpty()) {
+            val lastUri = Uri.parse(maps[0].uriString)
+            val fileName = getFileName(lastUri) ?: ""
+            if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                loadKmz(lastUri)
+            } else {
+                loadPdf(lastUri)
             }
         }
     }

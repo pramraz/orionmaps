@@ -33,7 +33,8 @@
     <string name="track_recording_desc">Povolí sledování cesty a export do GPX</string>
     <string name="no_recent_maps">Žádné nedávné mapy</string>
     <string name="clear_list">Vymazat seznam</string>
-    <string name="error_opening_map">Chyba při otevírání mapy</string>
+    <string name="error_opening_map">Nepodařilo se načíst mapu</string>
+    <string name="open_last_map">Otevřít poslední mapu</string>
     <string name="recenter">Vycentrovat</string>
     <string name="cycle_gps_mode">Přepnout režim GPS</string>
     <string name="toggle_gesture_mode">Přepnout režim gest</string>

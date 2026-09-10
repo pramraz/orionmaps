@@ -142,18 +142,30 @@ fun MapScreen(
         when (val state = uiState) {
             is MapUiState.Empty -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                        Text(stringResource(R.string.open_pdf_map))
+                    if (recentMaps.isNotEmpty()) {
+                        Button(
+                            onClick = { viewModel.openLastMap() }
+                        ) {
+                            Text(stringResource(R.string.open_last_map))
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
-                        Text(stringResource(R.string.open_kmz_map))
+
+                    Row {
+                        OutlinedButton(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
+                            Text(stringResource(R.string.open_pdf_map))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedButton(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
+                            Text(stringResource(R.string.open_kmz_map))
+                        }
                     }
+
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
+                        TextButton(
                             onClick = { showRecentMapsDialog = true },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = 0.7f))
                         ) {
                             Text(stringResource(R.string.recent_maps))
                         }
@@ -175,8 +187,23 @@ fun MapScreen(
             }
             is MapUiState.Error -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = state.message, color = MaterialTheme.colorScheme.error)
-                    Row(modifier = Modifier.padding(top = 16.dp)) {
+                    Text(
+                        text = stringResource(R.string.error_opening_map),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    if (state.message.isNotEmpty()) {
+                        Text(
+                            text = state.message,
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row {
                         Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
                             Text(stringResource(R.string.pdf))
                         }
