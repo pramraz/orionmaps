@@ -163,9 +163,8 @@ fun MapScreen(
 
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        TextButton(
-                            onClick = { showRecentMapsDialog = true },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = 0.7f))
+                        Button(
+                            onClick = { showRecentMapsDialog = true }
                         ) {
                             Text(stringResource(R.string.recent_maps))
                         }
