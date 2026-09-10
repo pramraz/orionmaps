@@ -28,7 +28,7 @@
     <string name="keep_screen_on">Ponechat obrazovku zapnutou</string>
     <string name="keep_screen_on_desc">Zabrání vypnutí displeje</string>
     <string name="show_over_lock_screen">Zobrazit nad uzamčenou obrazovkou</string>
-    <string name="show_over_lock_screen_desc">Zobrazit aplikaci bez odemykání telefonu</string>
+    <string name="show_over_lock_screen_desc">Zobrazí aplikaci bez odemykání telefonu</string>
     <string name="track_recording">Záznam trasy</string>
     <string name="track_recording_desc">Povolí sledování cesty a export do GPX</string>
     <string name="no_recent_maps">Žádné nedávné mapy</string>

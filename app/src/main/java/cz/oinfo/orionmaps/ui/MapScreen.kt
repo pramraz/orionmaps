@@ -834,6 +834,7 @@ fun GpxMenuFab(
                     onLoadClick()
                     expanded = false
                 },
+                enabled = !isRecording,
                 leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) }
             )
 
