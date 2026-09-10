@@ -1,6 +1,8 @@
 package cz.oinfo.orionmaps.ui
 
 import android.Manifest
+import androidx.compose.ui.res.stringResource
+import cz.oinfo.orionmaps.R
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -141,11 +143,11 @@ fun MapScreen(
             is MapUiState.Empty -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                        Text("Open PDF map")
+                        Text(stringResource(R.string.open_pdf_map))
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
-                        Text("Open KMZ map")
+                        Text(stringResource(R.string.open_kmz_map))
                     }
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -153,7 +155,7 @@ fun MapScreen(
                             onClick = { showRecentMapsDialog = true },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                         ) {
-                            Text("Recent maps")
+                            Text(stringResource(R.string.recent_maps))
                         }
                     }
                 }
@@ -176,11 +178,11 @@ fun MapScreen(
                     Text(text = state.message, color = MaterialTheme.colorScheme.error)
                     Row(modifier = Modifier.padding(top = 16.dp)) {
                         Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                            Text("PDF")
+                            Text(stringResource(R.string.pdf))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
-                            Text("KMZ")
+                            Text(stringResource(R.string.kmz))
                         }
                     }
                     if (recentMaps.isNotEmpty()) {
@@ -189,7 +191,7 @@ fun MapScreen(
                             onClick = { showRecentMapsDialog = true },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                         ) {
-                            Text("Recent maps")
+                            Text(stringResource(R.string.recent_maps))
                         }
                     }
                 }
@@ -264,6 +266,9 @@ fun InteractiveMap(
         showNotification = true
     }
 
+    val trackSavedMsg = stringResource(R.string.track_saved_success)
+    val trackErrorMsg = stringResource(R.string.error_saving_track)
+
     val createGpxLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/gpx+xml")
     ) { uri ->
@@ -274,9 +279,9 @@ fun InteractiveMap(
                     output.write(gpxString.toByteArray())
                 }
                 viewModel.clearRecordedTrack()
-                triggerNotification("Track saved successfully")
+                triggerNotification(trackSavedMsg)
             } catch (e: Exception) {
-                triggerNotification("Error saving track")
+                triggerNotification(trackErrorMsg)
             }
         }
     }
@@ -302,6 +307,8 @@ fun InteractiveMap(
             showNotification = false
         }
     }
+
+    var showRecentMapsDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -572,7 +579,6 @@ fun InteractiveMap(
         ) {
             // Settings Button (Gear icon)
             var showSettingsMenu by remember { mutableStateOf(false) }
-            var showRecentMapsDialog by remember { mutableStateOf(false) }
 
             Box {
                 FloatingActionButton(
@@ -588,7 +594,7 @@ fun InteractiveMap(
                     onDismissRequest = { showSettingsMenu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Reset map") },
+                        text = { Text(stringResource(R.string.reset_map)) },
                         onClick = {
                             scale = 1f
                             rotation = 0f
@@ -598,7 +604,7 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.SettingsBackupRestore, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Open PDF map") },
+                        text = { Text(stringResource(R.string.open_pdf_map)) },
                         onClick = {
                             onOpenNewPdfMap()
                             showSettingsMenu = false
@@ -606,7 +612,7 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Open KMZ map") },
+                        text = { Text(stringResource(R.string.open_kmz_map)) },
                         onClick = {
                             onOpenNewKmzMap()
                             showSettingsMenu = false
@@ -614,7 +620,7 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Recent maps") },
+                        text = { Text(stringResource(R.string.recent_maps)) },
                         onClick = {
                             showRecentMapsDialog = true
                             showSettingsMenu = false
@@ -622,7 +628,7 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.History, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("App settings") },
+                        text = { Text(stringResource(R.string.app_settings)) },
                         onClick = {
                             onOpenAppSettings()
                             showSettingsMenu = false
@@ -655,7 +661,7 @@ fun InteractiveMap(
                         GpsMode.FREE -> Icons.Default.LocationOn
                         GpsMode.FOLLOW -> Icons.Default.Navigation
                     }
-                    Icon(icon, contentDescription = "Cycle GPS Mode")
+                    Icon(icon, contentDescription = stringResource(R.string.cycle_gps_mode))
                 }
 
                 if (gpsMode == GpsMode.FOLLOW && isTrackingSuspended) {
@@ -664,10 +670,14 @@ fun InteractiveMap(
                         modifier = Modifier.size(40.dp),
                         containerColor = MaterialTheme.colorScheme.secondaryContainer
                     ) {
-                        Icon(Icons.Default.MyLocation, contentDescription = "Recenter")
+                        Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.recenter))
                     }
                 }
             }
+
+            val modeAll = stringResource(R.string.mode_all_gestures)
+            val modeRot = stringResource(R.string.mode_rotation_locked)
+            val modeZoom = stringResource(R.string.mode_zoom_locked)
 
             FloatingActionButton(
                 onClick = {
@@ -677,9 +687,9 @@ fun InteractiveMap(
                         GestureMode.LOCK_ZOOM -> GestureMode.ALL
                     }
                     triggerNotification(when (gestureMode) {
-                        GestureMode.ALL -> "Mode: All Gestures"
-                        GestureMode.LOCK_ROTATION -> "Mode: Rotation Locked"
-                        GestureMode.LOCK_ZOOM -> "Mode: Zoom Locked"
+                        GestureMode.ALL -> modeAll
+                        GestureMode.LOCK_ROTATION -> modeRot
+                        GestureMode.LOCK_ZOOM -> modeZoom
                     })
                 },
                 modifier = Modifier.size(44.dp),
@@ -693,25 +703,25 @@ fun InteractiveMap(
                     GestureMode.ALL -> Icons.Default.LockOpen
                     else -> Icons.Default.Lock
                 }
-                Icon(icon, contentDescription = "Toggle Gesture Mode")
+                Icon(icon, contentDescription = stringResource(R.string.toggle_gesture_mode))
             }
+        }
 
-            if (showRecentMapsDialog) {
-                RecentMapsDialog(
-                    onDismiss = { showRecentMapsDialog = false },
-                    onMapSelected = { uriString ->
-                        val uri = android.net.Uri.parse(uriString)
-                        val fileName = viewModel.getFileName(uri) ?: ""
-                        if (fileName.endsWith(".kmz", ignoreCase = true)) {
-                            viewModel.loadKmz(uri)
-                        } else {
-                            viewModel.loadPdf(uri)
-                        }
-                        showRecentMapsDialog = false
-                    },
-                    viewModel = viewModel
-                )
-            }
+        if (showRecentMapsDialog) {
+            RecentMapsDialog(
+                onDismiss = { showRecentMapsDialog = false },
+                onMapSelected = { uriString ->
+                    val uri = android.net.Uri.parse(uriString)
+                    val fileName = viewModel.getFileName(uri) ?: ""
+                    if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                        viewModel.loadKmz(uri)
+                    } else {
+                        viewModel.loadPdf(uri)
+                    }
+                    showRecentMapsDialog = false
+                },
+                viewModel = viewModel
+            )
         }
     }
 }
@@ -738,7 +748,7 @@ fun GpxMenuFab(
         ) {
             Icon(
                 if (isRecording) Icons.Default.RadioButtonChecked else Icons.Default.Route,
-                contentDescription = "GPX Menu",
+                contentDescription = stringResource(R.string.gpx_menu),
                 tint = if (isRecording) Color.Red else LocalContentColor.current
             )
         }
@@ -748,7 +758,7 @@ fun GpxMenuFab(
             onDismissRequest = { expanded = false }
         ) {
             DropdownMenuItem(
-                text = { Text(if (isRecording) "Stop Recording" else "Start Recording") },
+                text = { Text(if (isRecording) stringResource(R.string.stop_recording) else stringResource(R.string.start_recording)) },
                 onClick = {
                     if (isRecording) {
                         viewModel.stopRecording()
@@ -767,7 +777,7 @@ fun GpxMenuFab(
             )
             
             DropdownMenuItem(
-                text = { Text(if (showRecordedTrack) "Hide Track" else "Show Track") },
+                text = { Text(if (showRecordedTrack) stringResource(R.string.hide_track) else stringResource(R.string.show_track)) },
                 onClick = {
                     viewModel.setShowRecordedTrack(!showRecordedTrack)
                     expanded = false
@@ -782,7 +792,7 @@ fun GpxMenuFab(
             )
 
             DropdownMenuItem(
-                text = { Text("Save Track") },
+                text = { Text(stringResource(R.string.save_track)) },
                 onClick = {
                     onExportClick()
                     expanded = false
@@ -792,7 +802,7 @@ fun GpxMenuFab(
             )
 
             DropdownMenuItem(
-                text = { Text("Load GPX") },
+                text = { Text(stringResource(R.string.load_gpx)) },
                 onClick = {
                     onLoadClick()
                     expanded = false
@@ -801,7 +811,7 @@ fun GpxMenuFab(
             )
 
             DropdownMenuItem(
-                text = { Text("Clear Track") },
+                text = { Text(stringResource(R.string.clear_track)) },
                 onClick = {
                     if (isTrackSaved) {
                         viewModel.clearRecordedTrack()
@@ -819,8 +829,8 @@ fun GpxMenuFab(
     if (showDeleteWarning) {
         AlertDialog(
             onDismissRequest = { showDeleteWarning = false },
-            title = { Text("Unsaved Track") },
-            text = { Text("The current track is not saved. Do you want to delete it anyway?") },
+            title = { Text(stringResource(R.string.unsaved_track_title)) },
+            text = { Text(stringResource(R.string.unsaved_track_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -828,12 +838,12 @@ fun GpxMenuFab(
                         showDeleteWarning = false
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteWarning = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -861,7 +871,7 @@ fun AppSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "App Settings",
+                    text = stringResource(R.string.app_settings),
                     style = MaterialTheme.typography.headlineSmall
                 )
 
@@ -871,9 +881,9 @@ fun AppSettingsDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Keep screen on", style = MaterialTheme.typography.bodyLarge)
+                        Text(text = stringResource(R.string.keep_screen_on), style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            text = "Prevent display from turning off",
+                            text = stringResource(R.string.keep_screen_on_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -890,9 +900,9 @@ fun AppSettingsDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Show over lock screen", style = MaterialTheme.typography.bodyLarge)
+                        Text(text = stringResource(R.string.show_over_lock_screen), style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            text = "Show app without unlocking phone",
+                            text = stringResource(R.string.show_over_lock_screen_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -910,9 +920,9 @@ fun AppSettingsDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Track recording", style = MaterialTheme.typography.bodyLarge)
+                        Text(text = stringResource(R.string.track_recording), style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            text = "Enable path tracking and GPX export",
+                            text = stringResource(R.string.track_recording_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -927,7 +937,7 @@ fun AppSettingsDialog(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text("Close")
+                    Text(stringResource(R.string.close))
                 }
             }
         }
@@ -993,17 +1003,17 @@ fun RecentMapsDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Recent Maps",
+                        text = stringResource(R.string.recent_maps),
                         style = MaterialTheme.typography.headlineSmall
                     )
                     IconButton(onClick = { viewModel.clearRecentMaps() }) {
-                        Icon(Icons.Outlined.Delete, contentDescription = "Clear List")
+                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.clear_list))
                     }
                 }
 
                 if (recentMaps.isEmpty()) {
                     Text(
-                        text = "No recent maps",
+                        text = stringResource(R.string.no_recent_maps),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(vertical = 16.dp)
                     )
@@ -1026,7 +1036,7 @@ fun RecentMapsDialog(
                                     } catch (e: Exception) {
                                         android.widget.Toast.makeText(
                                             context,
-                                            "Error opening map",
+                                            R.string.error_opening_map,
                                             android.widget.Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -1040,7 +1050,7 @@ fun RecentMapsDialog(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text("Close")
+                    Text(stringResource(R.string.close))
                 }
             }
         }
