@@ -152,11 +152,11 @@ fun MapScreen(
                     }
 
                     Row {
-                        OutlinedButton(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
+                        Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
                             Text(stringResource(R.string.open_pdf_map))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedButton(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
+                        Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
                             Text(stringResource(R.string.open_kmz_map))
                         }
                     }
@@ -214,9 +214,8 @@ fun MapScreen(
                     }
                     if (recentMaps.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = { showRecentMapsDialog = true },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        Button(
+                            onClick = { showRecentMapsDialog = true }
                         ) {
                             Text(stringResource(R.string.recent_maps))
                         }
