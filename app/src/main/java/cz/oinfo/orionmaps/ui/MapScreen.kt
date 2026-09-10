@@ -187,29 +187,28 @@ fun MapScreen(
             }
             is MapUiState.Error -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = stringResource(R.string.error_opening_map),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.titleMedium
                     )
-                    if (state.message.isNotEmpty()) {
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
 
                     Row {
                         Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                            Text(stringResource(R.string.pdf))
+                            Text(stringResource(R.string.open_pdf_map))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
-                            Text(stringResource(R.string.kmz))
+                            Text(stringResource(R.string.open_kmz_map))
                         }
                     }
                     if (recentMaps.isNotEmpty()) {
