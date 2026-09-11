@@ -532,9 +532,10 @@ fun InteractiveMap(
                         val beakPath = androidx.compose.ui.graphics.Path().apply {
                             // Start beak slightly above the dot + gap
                             val beakBottomY = center.y - radius - gap
-                            moveTo(center.x - radius * 0.7f, beakBottomY)
-                            lineTo(center.x, beakBottomY - radius * 1.5f) // Tip of the beak
-                            lineTo(center.x + radius * 0.7f, beakBottomY)
+                            // Shrink beak by ~15%: width 0.7f -> 0.6f, height 1.5f -> 1.3f
+                            moveTo(center.x - radius * 0.6f, beakBottomY)
+                            lineTo(center.x, beakBottomY - radius * 1.3f) // Tip of the beak
+                            lineTo(center.x + radius * 0.6f, beakBottomY)
                             close()
                         }
 
