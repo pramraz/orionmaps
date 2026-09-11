@@ -729,9 +729,9 @@ fun InteractiveMap(
                             viewModel.cycleGpsMode()
                             // Trigger notification with the NEW mode
                             val nextMode = when (gpsMode) {
-                                GpsMode.HIDDEN -> gpsModeFree
-                                GpsMode.FREE -> gpsModeFollow
-                                GpsMode.FOLLOW -> gpsModeCompass
+                                GpsMode.HIDDEN -> gpsModeFollow
+                                GpsMode.FOLLOW -> gpsModeFree
+                                GpsMode.FREE -> gpsModeCompass
                                 GpsMode.COMPASS_ONLY -> gpsModeHidden
                             }
                             triggerNotification(nextMode)
