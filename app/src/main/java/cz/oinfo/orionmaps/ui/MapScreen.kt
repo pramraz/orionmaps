@@ -501,50 +501,67 @@ fun InteractiveMap(
                 }
             }
 
-            // 3. GPS DOT
+// 3. GPS DOT
             if (georeference != null && currentLocation != null) {
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(baseDotX.roundToInt(), baseDotY.roundToInt()) }
-                        .size(6.4.dp)
-                        .offset((-3.2).dp, (-3.2).dp) // Center the canvas exactly on the coordinate
+                        .size(32.dp) // Větší kontejner, aby se šipka při rotaci neusekla
+                        .offset((-16).dp, (-16).dp) // Vycentrování na přesnou souřadnici
                         .graphicsLayer {
-                            // CRITICAL FIX: Just the raw compass bearing.
-                            // The Master Transform Box handles the map/container rotation.
                             rotationZ = compassBearing
+                            // ZÁSADNÍ TRIK: Inverzní měřítko zruší zoom mapy, tečka bude stále stejně velká
+                            scaleX = 1f / scale
+                            scaleY = 1f / scale
                         }
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val radius = size.width / 2.5f
+                        val radius = 5.dp.toPx() // Diameter 10dp
+                        val gap = 1.5.dp.toPx()  // Gap between dot and beak
                         val center = Offset(size.width / 2, size.height / 2)
-                        
-                        val path = androidx.compose.ui.graphics.Path().apply {
-                            // 1. Draw the main circle
+
+                        // 1. Path for the central dot
+                        val dotPath = androidx.compose.ui.graphics.Path().apply {
                             addOval(androidx.compose.ui.geometry.Rect(
                                 center.x - radius, center.y - radius,
                                 center.x + radius, center.y + radius
                             ))
-                            // 2. Draw the beak pointing UP (towards -Y)
-                            // We move to a point inside the circle to ensure overlap/solid fill
-                            moveTo(center.x - radius * 0.8f, center.y - radius * 0.3f)
-                            lineTo(center.x, center.y - radius * 2.2f) // The tip of the beak
-                            lineTo(center.x + radius * 0.8f, center.y - radius * 0.3f)
+                        }
+
+                        // 2. Path for the detached beak (pointing UP)
+                        val beakPath = androidx.compose.ui.graphics.Path().apply {
+                            // Start beak slightly above the dot + gap
+                            val beakBottomY = center.y - radius - gap
+                            moveTo(center.x - radius * 0.7f, beakBottomY)
+                            lineTo(center.x, beakBottomY - radius * 1.5f) // Tip of the beak
+                            lineTo(center.x + radius * 0.7f, beakBottomY)
                             close()
                         }
 
-                        // Fill with Blue
-                        drawPath(path = path, color = Color.Blue)
-                        
-                        // White outline for visibility
+                        // 3. Draw WHITE halo/outline for BOTH parts first
+                        val strokeWidth = 3.dp.toPx()
                         drawPath(
-                            path = path, 
-                            color = Color.White, 
+                            path = dotPath,
+                            color = Color.White,
                             style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                width = 1.dp.toPx(),
-                                cap = androidx.compose.ui.graphics.StrokeCap.Round, 
+                                width = strokeWidth,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
                                 join = androidx.compose.ui.graphics.StrokeJoin.Round
                             )
                         )
+                        drawPath(
+                            path = beakPath,
+                            color = Color.White,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = strokeWidth,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            )
+                        )
+
+                        // 4. Fill BOTH parts with MAGENTA
+                        drawPath(path = dotPath, color = Color.Magenta)
+                        drawPath(path = beakPath, color = Color.Magenta)
                     }
                 }
             }
