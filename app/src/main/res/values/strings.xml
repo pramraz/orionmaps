@@ -3,13 +3,11 @@
     <string name="open_pdf_map">Open PDF map</string>
     <string name="open_kmz_map">Open KMZ map</string>
     <string name="recent_maps">Recent maps</string>
-    <string name="pdf">PDF</string>
-    <string name="kmz">KMZ</string>
     <string name="reset_map">Reset map</string>
     <string name="app_settings">App settings</string>
     <string name="track_saved_success">Track saved successfully</string>
     <string name="error_saving_track">Error saving track</string>
-    <string name="mode_all_gestures">All Gestures</string>
+    <string name="mode_all_gestures">Zoom and Rotation</string>
     <string name="mode_rotation_locked">Rotation Locked</string>
     <string name="mode_zoom_locked">Zoom Locked</string>
     <string name="gpx_menu">GPX Menu</string>
