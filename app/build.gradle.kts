@@ -11,7 +11,7 @@ android {
         applicationId = "cz.oinfo.orionmaps"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
+        versionCode = getGitCommitCount()
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -52,4 +52,11 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+fun getGitCommitCount(): Int {
+    return providers.exec {
+        commandLine("git", "rev-list", "--count", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim().toIntOrNull() ?: 42 }.getOrElse(42)
 }
