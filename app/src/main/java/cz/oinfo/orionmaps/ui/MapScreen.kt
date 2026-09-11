@@ -148,7 +148,14 @@ fun MapScreen(
                         ) {
                             Text(stringResource(R.string.open_last_map))
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = recentMaps[0].name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                        )
                     }
 
                     Row {
@@ -517,27 +524,28 @@ fun InteractiveMap(
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(baseDotX.roundToInt(), baseDotY.roundToInt()) }
-                        .size(16.dp)
-                        .offset((-8).dp, (-8).dp) // Center the canvas exactly on the coordinate
+                        .size(6.4.dp)
+                        .offset((-3.2).dp, (-3.2).dp) // Center the canvas exactly on the coordinate
                         .graphicsLayer {
                             // CRITICAL FIX: Just the raw compass bearing. The parent layer handles the map rotation.
                             rotationZ = compassBearing
                         }
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val radius = size.width / 3f
+                        val radius = size.width / 2.5f
                         val center = Offset(size.width / 2, size.height / 2)
                         
                         val path = androidx.compose.ui.graphics.Path().apply {
-                            // Draw the main circle
+                            // 1. Draw the main circle
                             addOval(androidx.compose.ui.geometry.Rect(
                                 center.x - radius, center.y - radius,
                                 center.x + radius, center.y + radius
                             ))
-                            // Draw the beak pointing UP (towards -Y)
-                            moveTo(center.x - radius * 0.7f, center.y - radius * 0.5f)
-                            lineTo(center.x, center.y - radius * 2f) // The tip of the beak
-                            lineTo(center.x + radius * 0.7f, center.y - radius * 0.5f)
+                            // 2. Draw the beak pointing UP (towards -Y)
+                            // We move to a point inside the circle to ensure overlap/solid fill
+                            moveTo(center.x - radius * 0.8f, center.y - radius * 0.3f)
+                            lineTo(center.x, center.y - radius * 2.2f) // The tip of the beak
+                            lineTo(center.x + radius * 0.8f, center.y - radius * 0.3f)
                             close()
                         }
 
@@ -549,7 +557,7 @@ fun InteractiveMap(
                             path = path, 
                             color = Color.White, 
                             style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                width = 1.5.dp.toPx(), 
+                                width = 1.dp.toPx(),
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round, 
                                 join = androidx.compose.ui.graphics.StrokeJoin.Round
                             )
