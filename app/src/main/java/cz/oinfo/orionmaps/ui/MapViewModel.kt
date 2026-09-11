@@ -38,7 +38,7 @@ data class RecentMap(val uriString: String, val name: String)
 data class MapGeoreference(val north: Double, val south: Double, val east: Double, val west: Double, val rotation: Double = 0.0)
 
 enum class GpsMode {
-    HIDDEN, FREE, FOLLOW
+    HIDDEN, FREE, FOLLOW, COMPASS_ONLY
 }
 
 class MapViewModel(application: Application) : AndroidViewModel(application), SensorEventListener {
@@ -525,7 +525,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         _gpsMode.value = when (_gpsMode.value) {
             GpsMode.HIDDEN -> GpsMode.FREE
             GpsMode.FREE -> GpsMode.FOLLOW
-            GpsMode.FOLLOW -> GpsMode.HIDDEN
+            GpsMode.FOLLOW -> GpsMode.COMPASS_ONLY
+            GpsMode.COMPASS_ONLY -> GpsMode.HIDDEN
         }
         if (_gpsMode.value == GpsMode.FOLLOW) {
             _isTrackingSuspended.value = false

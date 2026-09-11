@@ -390,7 +390,7 @@ fun InteractiveMap(
             .onGloballyPositioned { containerSize = it.size }
             .pointerInput(gestureMode, gpsMode) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
-                    if (gpsMode == GpsMode.FOLLOW && (pan != Offset.Zero || zoom != 1f)) {
+                    if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && (pan != Offset.Zero || zoom != 1f)) {
                         viewModel.setTrackingSuspended(true)
                     }
 
@@ -428,7 +428,7 @@ fun InteractiveMap(
                 }
             }
     ) {
-        val currentRotation = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) -compassBearing else rotation
+        val currentRotation = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && !isTrackingSuspended) -compassBearing else rotation
 
         // Calculation for content positioning (reused for centering math and marker positioning)
         val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
@@ -451,7 +451,7 @@ fun InteractiveMap(
             renderOffsetY = 0f
         }
 
-        val activeOffset = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
+        val activeOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
             val percentPos = getMapPercentages(currentLocation!!, georeference)
             
             val baseDotX = renderOffsetX + percentPos.first * renderedWidth
@@ -544,8 +544,8 @@ fun InteractiveMap(
                 }
             }
 
-// 3. GPS DOT
-            if (georeference != null && currentLocation != null) {
+            // 3. GPS DOT
+            if (georeference != null && currentLocation != null && gpsMode != GpsMode.COMPASS_ONLY) {
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(baseDotX.roundToInt(), baseDotY.roundToInt()) }
@@ -633,6 +633,10 @@ fun InteractiveMap(
             }
         }
 
+        val modeAll = stringResource(R.string.mode_all_gestures)
+        val modeRot = stringResource(R.string.mode_rotation_locked)
+        val modeZoom = stringResource(R.string.mode_zoom_locked)
+
         // Control Buttons in Top-Right Column
         Column(
             modifier = Modifier
@@ -713,34 +717,32 @@ fun InteractiveMap(
                 }
 
                 FloatingActionButton(
-                    onClick = { viewModel.cycleGpsMode() },
+                    onClick = { 
+                        if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && isTrackingSuspended) {
+                            viewModel.setTrackingSuspended(false)
+                        } else {
+                            viewModel.cycleGpsMode()
+                        }
+                    },
                     modifier = Modifier.size(44.dp),
                     containerColor = when (gpsMode) {
                         GpsMode.HIDDEN -> MaterialTheme.colorScheme.surfaceVariant
                         GpsMode.FREE -> MaterialTheme.colorScheme.primaryContainer
-                        GpsMode.FOLLOW -> MaterialTheme.colorScheme.tertiaryContainer
+                        GpsMode.FOLLOW -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer
+                        GpsMode.COMPASS_ONLY -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else Color.Cyan.copy(alpha = 0.8f)
                     }
                 ) {
                     val icon = when (gpsMode) {
                         GpsMode.HIDDEN -> Icons.Default.LocationOff
                         GpsMode.FREE -> Icons.Default.LocationOn
-                        GpsMode.FOLLOW -> Icons.Default.Navigation
+                        GpsMode.FOLLOW -> if (isTrackingSuspended) Icons.Default.NearMe else Icons.Default.Navigation
+                        GpsMode.COMPASS_ONLY -> if (isTrackingSuspended) Icons.Default.ExploreOff else Icons.Default.Explore
                     }
                     Icon(icon, contentDescription = stringResource(R.string.cycle_gps_mode))
                 }
-
-                if (gpsMode == GpsMode.FOLLOW && isTrackingSuspended) {
-                    SmallFloatingActionButton(
-                        onClick = { viewModel.setTrackingSuspended(false) },
-                        modifier = Modifier.size(40.dp),
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ) {
-                        Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.recenter))
-                    }
-                }
             }
 
-            val modeAll = stringResource(R.string.mode_all_gestures)
+            // Gesture Mode Button
             val modeRot = stringResource(R.string.mode_rotation_locked)
             val modeZoom = stringResource(R.string.mode_zoom_locked)
 

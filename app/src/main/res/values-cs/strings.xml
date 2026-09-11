@@ -37,6 +37,7 @@
     <string name="open_last_map">Otevřít poslední mapu</string>
     <string name="recenter">Vycentrovat</string>
     <string name="cycle_gps_mode">Přepnout režim GPS</string>
+    <string name="gps_mode_compass_only">Režim: Pouze kompas</string>
     <string name="toggle_gesture_mode">Přepnout režim gest</string>
     <string name="version_label">Verze: %1$s (build %2$d)</string>
 </resources>

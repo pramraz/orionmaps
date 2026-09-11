@@ -37,6 +37,7 @@
     <string name="open_last_map">Open last map</string>
     <string name="recenter">Recenter</string>
     <string name="cycle_gps_mode">Cycle GPS Mode</string>
+    <string name="gps_mode_compass_only">Mode: Compass Only</string>
     <string name="toggle_gesture_mode">Toggle Gesture Mode</string>
     <string name="version_label">Version: %1$s (build %2$d)</string>
 </resources>
