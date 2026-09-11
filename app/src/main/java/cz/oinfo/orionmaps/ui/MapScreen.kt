@@ -66,7 +66,7 @@ fun MapScreen(
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     var showRecentMapsDialog by remember { mutableStateOf(false) }
     var showAppSettingsDialog by remember { mutableStateOf(false) }
-    
+
     val context = LocalContext.current
 
     // Handle Keep Screen On
@@ -118,11 +118,11 @@ fun MapScreen(
             viewModel.stopLocationUpdates()
         }
     }
-    
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
-            uri?.let { 
+            uri?.let {
                 val fileName = viewModel.getFileName(it) ?: ""
                 if (fileName.endsWith(".kmz", ignoreCase = true)) {
                     viewModel.loadKmz(it)
@@ -319,7 +319,7 @@ fun InteractiveMap(
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var rotation by remember { mutableStateOf(0f) }
-    
+
     val currentLocation by viewModel.currentLocation.collectAsState()
     val gpsMode by viewModel.gpsMode.collectAsState()
     val isTrackingSuspended by viewModel.isTrackingSuspended.collectAsState()
@@ -370,7 +370,7 @@ fun InteractiveMap(
             }
         }
     }
-    
+
     var gestureMode by remember { mutableStateOf(GestureMode.ALL) }
 
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -384,13 +384,58 @@ fun InteractiveMap(
 
     var showRecentMapsDialog by remember { mutableStateOf(false) }
 
+    // --- 1. HOISTED MATH CALCULATIONS ---
+    val currentRotation = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && !isTrackingSuspended) -compassBearing else rotation
+
+    val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+    val containerRatio = if (containerSize.height > 0) containerSize.width.toFloat() / containerSize.height.toFloat() else 1f
+
+    val renderedWidth = if (imgRatio > containerRatio) containerSize.width.toFloat() else containerSize.height.toFloat() * imgRatio
+    val renderedHeight = if (imgRatio > containerRatio) containerSize.width.toFloat() / imgRatio else containerSize.height.toFloat()
+    val renderOffsetX = if (imgRatio > containerRatio) 0f else (containerSize.width.toFloat() - renderedWidth) / 2f
+    val renderOffsetY = if (imgRatio > containerRatio) (containerSize.height.toFloat() - renderedHeight) / 2f else 0f
+
+    val baseDotX: Float
+    val baseDotY: Float
+    if (georeference != null && currentLocation != null) {
+        val percentPos = getMapPercentages(currentLocation!!, georeference)
+        baseDotX = renderOffsetX + percentPos.first * renderedWidth
+        baseDotY = renderOffsetY + percentPos.second * renderedHeight
+    } else {
+        baseDotX = 0f
+        baseDotY = 0f
+    }
+
+    val calculatedActiveOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
+        val targetX = containerSize.width / 2f
+        val targetY = if (gpsMode == GpsMode.FREE) containerSize.height * 0.5f else containerSize.height * 0.7f
+
+        val angleInRadians = currentRotation * PI / 180.0
+        val cos = cos(angleInRadians).toFloat()
+        val sin = sin(angleInRadians).toFloat()
+
+        val rx = (baseDotX * scale) * cos - (baseDotY * scale) * sin
+        val ry = (baseDotX * scale) * sin + (baseDotY * scale) * cos
+
+        Offset(targetX - rx, targetY - ry)
+    } else {
+        offset
+    }
+
+    val latestActiveOffset by rememberUpdatedState(calculatedActiveOffset)
+    val latestRotation by rememberUpdatedState(currentRotation)
+
+    // --- 2. GESTURE DETECTOR ---
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { containerSize = it.size }
             .pointerInput(gestureMode, gpsMode) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
-                    if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && (pan != Offset.Zero || zoom != 1f)) {
+                    // CRITICAL FIX: Synchronize states BEFORE suspending tracking
+                    if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && (pan != Offset.Zero || zoom != 1f)) {
+                        offset = latestActiveOffset
+                        rotation = latestRotation
                         viewModel.setTrackingSuspended(true)
                     }
 
@@ -405,22 +450,15 @@ fun InteractiveMap(
                     val cos = cos(angleInRadians).toFloat()
                     val sin = sin(angleInRadians).toFloat()
 
-                    // Vektor od aktuálního offsetu k centroidu (bodu mezi prsty)
                     val dx = centroid.x - offset.x
                     val dy = centroid.y - offset.y
 
-                    // Aplikace rotace na tento vektor
                     val rx = dx * cos - dy * sin
                     val ry = dx * sin + dy * cos
 
-                    // Aplikace změny měřítka
-                    val sx = rx * scaleRatio
-                    val sy = ry * scaleRatio
-
-                    // Výpočet nového offsetu: stávající + posun prstu + korekční posun
                     offset = Offset(
-                        x = offset.x + pan.x + dx - sx,
-                        y = offset.y + pan.y + dy - sy
+                        x = offset.x + pan.x + dx - (rx * scaleRatio),
+                        y = offset.y + pan.y + dy - (ry * scaleRatio)
                     )
 
                     scale = newScale
@@ -428,56 +466,6 @@ fun InteractiveMap(
                 }
             }
     ) {
-        val currentRotation = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && !isTrackingSuspended) -compassBearing else rotation
-
-        // Calculation for content positioning (reused for centering math and marker positioning)
-        val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
-        val containerRatio = containerSize.width.toFloat() / containerSize.height.toFloat()
-
-        val renderedWidth: Float
-        val renderedHeight: Float
-        val renderOffsetX: Float
-        val renderOffsetY: Float
-
-        if (imgRatio > containerRatio) {
-            renderedWidth = containerSize.width.toFloat()
-            renderedHeight = containerSize.width.toFloat() / imgRatio
-            renderOffsetX = 0f
-            renderOffsetY = (containerSize.height.toFloat() - renderedHeight) / 2f
-        } else {
-            renderedHeight = containerSize.height.toFloat()
-            renderedWidth = containerSize.height.toFloat() * imgRatio
-            renderOffsetX = (containerSize.width.toFloat() - renderedWidth) / 2f
-            renderOffsetY = 0f
-        }
-
-        val activeOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
-            val percentPos = getMapPercentages(currentLocation!!, georeference)
-            
-            val baseDotX = renderOffsetX + percentPos.first * renderedWidth
-            val baseDotY = renderOffsetY + percentPos.second * renderedHeight
-
-            // Target is bottom third (70% down)
-            val targetX = containerSize.width / 2f
-            val targetY = containerSize.height * 0.7f
-
-            val angleInRadians = currentRotation * PI / 180.0
-            val cos = cos(angleInRadians).toFloat()
-            val sin = sin(angleInRadians).toFloat()
-
-            // scaled position relative to top-left of rendered image
-            val sx = baseDotX * scale
-            val sy = baseDotY * scale
-
-            // rotated
-            val rx = sx * cos - sy * sin
-            val ry = sx * sin + sy * cos
-
-            Offset(targetX - rx, targetY - ry)
-        } else {
-            offset
-        }
-
         val trackPath = remember(recordedTrack, containerSize, georeference) {
             val path = androidx.compose.ui.graphics.Path()
             if (georeference != null && containerSize.width > 0) {
@@ -485,26 +473,10 @@ fun InteractiveMap(
                     val percentPos = getMapPercentages(loc, georeference)
                     val x = renderOffsetX + percentPos.first * renderedWidth
                     val y = renderOffsetY + percentPos.second * renderedHeight
-
-                    if (index == 0) {
-                        path.moveTo(x, y)
-                    } else {
-                        path.lineTo(x, y)
-                    }
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 }
             }
             path
-        }
-
-        val baseDotX: Float
-        val baseDotY: Float
-        if (georeference != null && currentLocation != null) {
-            val percentPos = getMapPercentages(currentLocation!!, georeference)
-            baseDotX = renderOffsetX + percentPos.first * renderedWidth
-            baseDotY = renderOffsetY + percentPos.second * renderedHeight
-        } else {
-            baseDotX = 0f
-            baseDotY = 0f
         }
 
         // MASTER TRANSFORM BOX
@@ -513,8 +485,8 @@ fun InteractiveMap(
                 .fillMaxSize()
                 .graphicsLayer {
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                    translationX = activeOffset.x
-                    translationY = activeOffset.y
+                    translationX = calculatedActiveOffset.x
+                    translationY = calculatedActiveOffset.y
                     scaleX = scale
                     scaleY = scale
                     rotationZ = currentRotation
@@ -722,8 +694,8 @@ fun InteractiveMap(
                 val gpsModeCompass = stringResource(R.string.gps_mode_compass_only)
 
                 FloatingActionButton(
-                    onClick = { 
-                        if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && isTrackingSuspended) {
+                    onClick = {
+                        if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && isTrackingSuspended) {
                             viewModel.setTrackingSuspended(false)
                         } else {
                             viewModel.cycleGpsMode()
@@ -740,14 +712,14 @@ fun InteractiveMap(
                     modifier = Modifier.size(44.dp),
                     containerColor = when (gpsMode) {
                         GpsMode.HIDDEN -> MaterialTheme.colorScheme.surfaceVariant
-                        GpsMode.FREE -> MaterialTheme.colorScheme.primaryContainer
+                        GpsMode.FREE -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
                         GpsMode.FOLLOW -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer
                         GpsMode.COMPASS_ONLY -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else Color.Cyan
                     }
                 ) {
                     val icon = when (gpsMode) {
                         GpsMode.HIDDEN -> Icons.Default.LocationOff
-                        GpsMode.FREE -> Icons.Default.LocationOn
+                        GpsMode.FREE -> if (isTrackingSuspended) Icons.Default.NearMe else Icons.Default.LocationOn
                         GpsMode.FOLLOW -> if (isTrackingSuspended) Icons.Default.NearMe else Icons.Default.Navigation
                         GpsMode.COMPASS_ONLY -> if (isTrackingSuspended) Icons.Default.ExploreOff else Icons.Default.Explore
                     }
@@ -855,7 +827,7 @@ fun GpxMenuFab(
                     )
                 }
             )
-            
+
             DropdownMenuItem(
                 text = { Text(if (showRecordedTrack) stringResource(R.string.hide_track) else stringResource(R.string.show_track)) },
                 onClick = {
