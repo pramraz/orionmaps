@@ -620,6 +620,29 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         return sb.toString()
     }
 
+    fun getVersionName(): String {
+        return try {
+            val packageInfo = getApplication<Application>().packageManager.getPackageInfo(getApplication<Application>().packageName, 0)
+            packageInfo.versionName ?: "1.0"
+        } catch (e: Exception) {
+            "1.0"
+        }
+    }
+
+    fun getVersionCode(): Int {
+        return try {
+            val packageInfo = getApplication<Application>().packageManager.getPackageInfo(getApplication<Application>().packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode
+            }
+        } catch (e: Exception) {
+            0
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         clearMap()

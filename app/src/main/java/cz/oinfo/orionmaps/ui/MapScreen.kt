@@ -141,41 +141,84 @@ fun MapScreen(
     ) {
         when (val state = uiState) {
             is MapUiState.Empty -> {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (recentMaps.isNotEmpty()) {
-                        Button(
-                            onClick = { viewModel.openLastMap() }
-                        ) {
-                            Text(stringResource(R.string.open_last_map))
-                        }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // App Name and Logo at Top
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 80.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
-                            text = recentMaps[0].name,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                            text = stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Image(
+                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(120.dp)
+                                .clip(MaterialTheme.shapes.medium)
                         )
                     }
 
-                    Row {
-                        Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
-                            Text(stringResource(R.string.open_pdf_map))
+                    // Main Controls in Center
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (recentMaps.isNotEmpty()) {
+                            Button(
+                                onClick = { viewModel.openLastMap() }
+                            ) {
+                                Text(stringResource(R.string.open_last_map))
+                            }
+                            Text(
+                                text = recentMaps[0].name,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                            )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
-                            Text(stringResource(R.string.open_kmz_map))
+
+                        Row {
+                            Button(onClick = { launcher.launch(arrayOf("application/pdf")) }) {
+                                Text(stringResource(R.string.open_pdf_map))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(onClick = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) }) {
+                                Text(stringResource(R.string.open_kmz_map))
+                            }
+                        }
+
+                        if (recentMaps.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { showRecentMapsDialog = true }
+                            ) {
+                                Text(stringResource(R.string.recent_maps))
+                            }
                         }
                     }
 
-                    if (recentMaps.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = { showRecentMapsDialog = true }
-                        ) {
-                            Text(stringResource(R.string.recent_maps))
-                        }
-                    }
+                    // Version Info at Bottom
+                    Text(
+                        text = stringResource(
+                            R.string.version_label,
+                            viewModel.getVersionName(),
+                            viewModel.getVersionCode()
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .padding(bottom = 16.dp)
+                    )
                 }
             }
             is MapUiState.Loading -> {
