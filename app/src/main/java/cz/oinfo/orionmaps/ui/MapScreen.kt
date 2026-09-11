@@ -716,12 +716,25 @@ fun InteractiveMap(
                     )
                 }
 
+                val gpsModeHidden = stringResource(R.string.gps_mode_hidden)
+                val gpsModeFree = stringResource(R.string.gps_mode_free)
+                val gpsModeFollow = stringResource(R.string.gps_mode_follow)
+                val gpsModeCompass = stringResource(R.string.gps_mode_compass_only)
+
                 FloatingActionButton(
                     onClick = { 
                         if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && isTrackingSuspended) {
                             viewModel.setTrackingSuspended(false)
                         } else {
                             viewModel.cycleGpsMode()
+                            // Trigger notification with the NEW mode
+                            val nextMode = when (gpsMode) {
+                                GpsMode.HIDDEN -> gpsModeFree
+                                GpsMode.FREE -> gpsModeFollow
+                                GpsMode.FOLLOW -> gpsModeCompass
+                                GpsMode.COMPASS_ONLY -> gpsModeHidden
+                            }
+                            triggerNotification(nextMode)
                         }
                     },
                     modifier = Modifier.size(44.dp),
@@ -729,7 +742,7 @@ fun InteractiveMap(
                         GpsMode.HIDDEN -> MaterialTheme.colorScheme.surfaceVariant
                         GpsMode.FREE -> MaterialTheme.colorScheme.primaryContainer
                         GpsMode.FOLLOW -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-                        GpsMode.COMPASS_ONLY -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else Color.Cyan.copy(alpha = 0.8f)
+                        GpsMode.COMPASS_ONLY -> if (isTrackingSuspended) MaterialTheme.colorScheme.secondaryContainer else Color.Cyan
                     }
                 ) {
                     val icon = when (gpsMode) {
