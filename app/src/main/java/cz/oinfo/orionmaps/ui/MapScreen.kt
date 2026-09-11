@@ -504,67 +504,57 @@ fun InteractiveMap(
         }
 
             // Directional Marker
-        if (gpsMode != GpsMode.HIDDEN && currentLocation != null) {
-            val percentPos = getMapPercentages(
-                currentLocation!!,
-                georeference
-            )
+            if (gpsMode != GpsMode.HIDDEN && currentLocation != null) {
+                val percentPos = getMapPercentages(
+                    currentLocation!!,
+                    georeference
+                )
 
-            // Finální X/Y pozice na displeji pro náš bod
-            val baseDotX = renderOffsetX + percentPos.first * renderedWidth
-            val baseDotY = renderOffsetY + percentPos.second * renderedHeight
+                // Finální X/Y pozice na displeji pro náš bod
+                val baseDotX = renderOffsetX + percentPos.first * renderedWidth
+                val baseDotY = renderOffsetY + percentPos.second * renderedHeight
 
-                Canvas(
+                Box(
                     modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                baseDotX.roundToInt(),
-                                baseDotY.roundToInt()
-                            )
-                        }
-                        .size(4.dp)
-                        .offset((-2).dp, (-2).dp)
+                        .offset { IntOffset(baseDotX.roundToInt(), baseDotY.roundToInt()) }
+                        .size(16.dp)
+                        .offset((-8).dp, (-8).dp) // Center the canvas exactly on the coordinate
                         .graphicsLayer {
-                            // Points to compass north. Subtract current transformation rotation.
-                            rotationZ = compassBearing - currentRotation
+                            // CRITICAL FIX: Just the raw compass bearing. The parent layer handles the map rotation.
+                            rotationZ = compassBearing
                         }
                 ) {
-                    val w = this.size.width
-                    val h = this.size.height
-                    val center = androidx.compose.ui.geometry.Offset(w / 2f, h / 2f)
-                    val dotRadius = w / 4.5f
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val radius = size.width / 3f
+                        val center = Offset(size.width / 2, size.height / 2)
+                        
+                        val path = androidx.compose.ui.graphics.Path().apply {
+                            // Draw the main circle
+                            addOval(androidx.compose.ui.geometry.Rect(
+                                center.x - radius, center.y - radius,
+                                center.x + radius, center.y + radius
+                            ))
+                            // Draw the beak pointing UP (towards -Y)
+                            moveTo(center.x - radius * 0.7f, center.y - radius * 0.5f)
+                            lineTo(center.x, center.y - radius * 2f) // The tip of the beak
+                            lineTo(center.x + radius * 0.7f, center.y - radius * 0.5f)
+                            close()
+                        }
 
-                    // 1. Draw Heading Triangle (Beak) - slightly offset from center
-                    val trianglePath = Path().apply {
-                        moveTo(w / 2f, h * 0.01f) // Top tip
-                        lineTo(w * 0.75f, h * 0.3f) // Right base
-                        lineTo(w * 0.25f, h * 0.3f) // Left base
-                        close()
+                        // Fill with Blue
+                        drawPath(path = path, color = Color.Blue)
+                        
+                        // White outline for visibility
+                        drawPath(
+                            path = path, 
+                            color = Color.White, 
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 1.5.dp.toPx(), 
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round, 
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            )
+                        )
                     }
-                    
-                    // White outline for triangle
-                    drawPath(
-                        path = trianglePath,
-                        color = Color.White,
-                        style = Stroke(width = 0.5.dp.toPx())
-                    )
-                    // Blue fill for triangle
-                    drawPath(
-                        path = trianglePath,
-                        color = Color(0xFF2196F3)
-                    )
-
-                    // 2. Draw Position Dot with White Outline
-                    drawCircle(
-                        color = Color.White,
-                        radius = dotRadius + 0.5.dp.toPx(),
-                        center = center
-                    )
-                    drawCircle(
-                        color = Color(0xFF2196F3),
-                        radius = dotRadius,
-                        center = center
-                    )
                 }
             }
         }
