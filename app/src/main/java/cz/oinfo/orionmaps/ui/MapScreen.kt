@@ -387,80 +387,88 @@ fun InteractiveMap(
     ) {
         val currentRotation = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) -compassBearing else rotation
 
-    // Calculation for content positioning (reused for centering math and marker positioning)
-    val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
-    val containerRatio = containerSize.width.toFloat() / containerSize.height.toFloat()
+        // Calculation for content positioning (reused for centering math and marker positioning)
+        val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+        val containerRatio = containerSize.width.toFloat() / containerSize.height.toFloat()
 
-    val renderedWidth: Float
-    val renderedHeight: Float
-    val renderOffsetX: Float
-    val renderOffsetY: Float
+        val renderedWidth: Float
+        val renderedHeight: Float
+        val renderOffsetX: Float
+        val renderOffsetY: Float
 
-    if (imgRatio > containerRatio) {
-        renderedWidth = containerSize.width.toFloat()
-        renderedHeight = containerSize.width.toFloat() / imgRatio
-        renderOffsetX = 0f
-        renderOffsetY = (containerSize.height.toFloat() - renderedHeight) / 2f
-    } else {
-        renderedHeight = containerSize.height.toFloat()
-        renderedWidth = containerSize.height.toFloat() * imgRatio
-        renderOffsetX = (containerSize.width.toFloat() - renderedWidth) / 2f
-        renderOffsetY = 0f
-    }
+        if (imgRatio > containerRatio) {
+            renderedWidth = containerSize.width.toFloat()
+            renderedHeight = containerSize.width.toFloat() / imgRatio
+            renderOffsetX = 0f
+            renderOffsetY = (containerSize.height.toFloat() - renderedHeight) / 2f
+        } else {
+            renderedHeight = containerSize.height.toFloat()
+            renderedWidth = containerSize.height.toFloat() * imgRatio
+            renderOffsetX = (containerSize.width.toFloat() - renderedWidth) / 2f
+            renderOffsetY = 0f
+        }
 
-    val activeOffset = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
-        val percentPos = getMapPercentages(currentLocation!!, georeference)
-        
-        val baseDotX = renderOffsetX + percentPos.first * renderedWidth
-        val baseDotY = renderOffsetY + percentPos.second * renderedHeight
+        val activeOffset = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
+            val percentPos = getMapPercentages(currentLocation!!, georeference)
+            
+            val baseDotX = renderOffsetX + percentPos.first * renderedWidth
+            val baseDotY = renderOffsetY + percentPos.second * renderedHeight
 
-        // Target is bottom third (70% down)
-        val targetX = containerSize.width / 2f
-        val targetY = containerSize.height * 0.7f
+            // Target is bottom third (70% down)
+            val targetX = containerSize.width / 2f
+            val targetY = containerSize.height * 0.7f
 
-        val angleInRadians = currentRotation * PI / 180.0
-        val cos = cos(angleInRadians).toFloat()
-        val sin = sin(angleInRadians).toFloat()
+            val angleInRadians = currentRotation * PI / 180.0
+            val cos = cos(angleInRadians).toFloat()
+            val sin = sin(angleInRadians).toFloat()
 
-        // scaled position relative to top-left of rendered image
-        val sx = baseDotX * scale
-        val sy = baseDotY * scale
+            // scaled position relative to top-left of rendered image
+            val sx = baseDotX * scale
+            val sy = baseDotY * scale
 
-        // rotated
-        val rx = sx * cos - sy * sin
-        val ry = sx * sin + sy * cos
+            // rotated
+            val rx = sx * cos - sy * sin
+            val ry = sx * sin + sy * cos
 
-        Offset(targetX - rx, targetY - ry)
-    } else {
-        offset
-    }
+            Offset(targetX - rx, targetY - ry)
+        } else {
+            offset
+        }
 
-    val trackPath = remember(recordedTrack, containerSize, georeference) {
-        val path = androidx.compose.ui.graphics.Path()
-        if (georeference != null && containerSize.width > 0) {
-            recordedTrack.forEachIndexed { index, loc ->
-                val percentPos = getMapPercentages(loc, georeference)
-                val x = renderOffsetX + percentPos.first * renderedWidth
-                val y = renderOffsetY + percentPos.second * renderedHeight
+        val trackPath = remember(recordedTrack, containerSize, georeference) {
+            val path = androidx.compose.ui.graphics.Path()
+            if (georeference != null && containerSize.width > 0) {
+                recordedTrack.forEachIndexed { index, loc ->
+                    val percentPos = getMapPercentages(loc, georeference)
+                    val x = renderOffsetX + percentPos.first * renderedWidth
+                    val y = renderOffsetY + percentPos.second * renderedHeight
 
-                if (index == 0) {
-                    path.moveTo(x, y)
-                } else {
-                    path.lineTo(x, y)
+                    if (index == 0) {
+                        path.moveTo(x, y)
+                    } else {
+                        path.lineTo(x, y)
+                    }
                 }
             }
+            path
         }
-        path
-    }
 
-    Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = "PDF Map",
+        val baseDotX: Float
+        val baseDotY: Float
+        if (georeference != null && currentLocation != null) {
+            val percentPos = getMapPercentages(currentLocation!!, georeference)
+            baseDotX = renderOffsetX + percentPos.first * renderedWidth
+            baseDotY = renderOffsetY + percentPos.second * renderedHeight
+        } else {
+            baseDotX = 0f
+            baseDotY = 0f
+        }
+
+        // MASTER TRANSFORM BOX
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.White)
                 .graphicsLayer {
-                    // ZÁSADNÍ OPRAVA: Fixace středu transformace do levého horního rohu
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                     translationX = activeOffset.x
                     translationY = activeOffset.y
@@ -468,66 +476,41 @@ fun InteractiveMap(
                     scaleY = scale
                     rotationZ = currentRotation
                 }
-        )
+        ) {
+            // 1. MAP
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "PDF Map",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White)
+            )
 
-// GPS Dot and Track
-        if (georeference != null && containerSize.width > 0) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                        translationX = activeOffset.x
-                        translationY = activeOffset.y
-                        scaleX = scale
-                        scaleY = scale
-                        rotationZ = currentRotation
-                    }
-            ) {
-            // Recorded Track Rendering
-        if (showRecordedTrack && !trackPath.isEmpty) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                        translationX = offset.x
-                        translationY = offset.y
-                        scaleX = scale
-                        scaleY = scale
-                        rotationZ = if (gpsMode == GpsMode.FOLLOW && !isTrackingSuspended) currentRotation else rotation
-                    }
-            ) {
-                drawPath(
-                    path = trackPath,
-                    color = Color.Magenta.copy(alpha = 0.7f),
-                    style = Stroke(
-                        width = 8f / scale,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+            // 2. GPX TRACK
+            if (showRecordedTrack && !trackPath.isEmpty) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawPath(
+                        path = trackPath,
+                        color = Color.Red,
+                        style = Stroke(
+                            width = 3.dp.toPx() / scale,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round
+                        )
                     )
-                )
+                }
             }
-        }
 
-            // Directional Marker
-            if (gpsMode != GpsMode.HIDDEN && currentLocation != null) {
-                val percentPos = getMapPercentages(
-                    currentLocation!!,
-                    georeference
-                )
-
-                // Finální X/Y pozice na displeji pro náš bod
-                val baseDotX = renderOffsetX + percentPos.first * renderedWidth
-                val baseDotY = renderOffsetY + percentPos.second * renderedHeight
-
+            // 3. GPS DOT
+            if (georeference != null && currentLocation != null) {
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(baseDotX.roundToInt(), baseDotY.roundToInt()) }
                         .size(6.4.dp)
                         .offset((-3.2).dp, (-3.2).dp) // Center the canvas exactly on the coordinate
                         .graphicsLayer {
-                            // CRITICAL FIX: Just the raw compass bearing. The parent layer handles the map rotation.
+                            // CRITICAL FIX: Just the raw compass bearing.
+                            // The Master Transform Box handles the map/container rotation.
                             rotationZ = compassBearing
                         }
                 ) {
@@ -565,7 +548,6 @@ fun InteractiveMap(
                     }
                 }
             }
-        }
         }
 
         // Custom Notification Overlay
