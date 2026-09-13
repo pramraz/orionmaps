@@ -205,20 +205,31 @@ fun MapScreen(
                         }
                     }
 
-                    // Version Info at Bottom
-                    Text(
-                        text = stringResource(
-                            R.string.version_label,
-                            viewModel.getVersionName(),
-                            viewModel.getVersionCode()
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.5f),
+                    // Version and Warning Info at Bottom
+                    Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .windowInsetsPadding(WindowInsets.navigationBars)
-                            .padding(bottom = 16.dp)
-                    )
+                            .padding(bottom = 16.dp, start = 32.dp, end = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.version_label,
+                                viewModel.getVersionName(),
+                                viewModel.getVersionCode()
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.usage_warning),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.5f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
             is MapUiState.Loading -> {
