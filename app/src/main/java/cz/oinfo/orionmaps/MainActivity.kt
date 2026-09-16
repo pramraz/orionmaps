@@ -1,6 +1,7 @@
 package cz.oinfo.orionmaps
 
-import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -9,8 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +24,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        // Handle intent when activity is first created
+        handleIntent(intent)
+        
         setContent {
             val showOverLockScreen by viewModel.showOverLockScreen.collectAsState()
 
@@ -37,6 +40,33 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     viewModel = viewModel
                 )
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Handle intent when activity is already running
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) {
+            intent.data?.let { uri ->
+                val fileName = viewModel.getFileName(uri) ?: ""
+                if (fileName.endsWith(".kmz", ignoreCase = true)) {
+                    viewModel.loadKmz(uri)
+                } else if (fileName.endsWith(".pdf", ignoreCase = true)) {
+                    viewModel.loadPdf(uri)
+                } else {
+                    // Try to load based on mime type if extension is missing
+                    val mimeType = contentResolver.getType(uri)
+                    if (mimeType == "application/vnd.google-earth.kmz") {
+                        viewModel.loadKmz(uri)
+                    } else if (mimeType == "application/pdf") {
+                        viewModel.loadPdf(uri)
+                    }
+                }
             }
         }
     }
