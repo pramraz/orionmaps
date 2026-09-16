@@ -905,25 +905,36 @@ fun OffMapIndicator(
         val dy = -cos(rad).toFloat()
 
         // Intersection with screen edges
-        // We use centerX and centerY because the vector starts from the center
         val tx = if (dx > 0) (w - centerX) / dx else if (dx < 0) -centerX / dx else Float.MAX_VALUE
         val ty = if (dy > 0) (h - centerY) / dy else if (dy < 0) -centerY / dy else Float.MAX_VALUE
         val t = min(abs(tx), abs(ty))
 
-        // Margin from edge (to make icon fully visible)
-        val margin = 28.dp.value * LocalDensity.current.density
-        val edgeT = (t - margin).coerceAtLeast(0f)
+        // Basic position on the very edge
+        val rawPosX = centerX + t * dx
+        val rawPosY = centerY + t * dy
 
-        val posX = centerX + edgeT * dx
-        val posY = centerY + edgeT * dy
+        // We need to know the size of our indicator to keep it fully on screen
+        var indicatorSize by remember { mutableStateOf(IntSize.Zero) }
+
+        // Adjust position based on size to keep it within [0, w] and [0, h]
+        val finalPosX = rawPosX.coerceIn(
+            indicatorSize.width / 2f,
+            w - indicatorSize.width / 2f
+        )
+        val finalPosY = rawPosY.coerceIn(
+            indicatorSize.height / 2f,
+            h - indicatorSize.height / 2f
+        )
 
         Column(
             modifier = Modifier
-                .offset { IntOffset(posX.roundToInt(), posY.roundToInt()) }
-                .graphicsLayer {
-                    translationX = -50f // Pivot point is center of this column
-                    translationY = -50f
-                },
+                .offset {
+                    IntOffset(
+                        (finalPosX - indicatorSize.width / 2f).roundToInt(),
+                        (finalPosY - indicatorSize.height / 2f).roundToInt()
+                    )
+                }
+                .onGloballyPositioned { indicatorSize = it.size },
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
@@ -931,9 +942,8 @@ fun OffMapIndicator(
                 contentDescription = null,
                 modifier = Modifier
                     .size(40.dp)
-                    .graphicsLayer { 
-                        rotationZ = screenBearing 
-                        // The arrow icon points UP by default, which matches our -cos(rad) logic
+                    .graphicsLayer {
+                        rotationZ = screenBearing
                     },
                 tint = Color.Red
             )
