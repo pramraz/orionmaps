@@ -293,6 +293,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                     val result = stitchTiles(overlays, tileBitmaps)
                     if (result != null) {
                         _uiState.value = MapUiState.Success(result.first, result.second)
+                        // Requirement: Default to "Free" (Pouze poloha) mode when KMZ is loaded
+                        _gpsMode.value = GpsMode.FREE
+                        _isTrackingSuspended.value = false
+
                         withContext(Dispatchers.Main) {
                             addRecentMap(uri)
                         }
