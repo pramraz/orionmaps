@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -48,7 +49,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -341,6 +344,7 @@ fun InteractiveMap(
     val isRecording by viewModel.isRecording.collectAsState()
     val showRecordedTrack by viewModel.showRecordedTrack.collectAsState()
     val recordedTrack by viewModel.recordedTrack.collectAsState()
+    val navInfo by viewModel.userNavigationInfo.collectAsState()
 
     val context = LocalContext.current
 
@@ -468,11 +472,35 @@ fun InteractiveMap(
                     val rx = dx * cos - dy * sin
                     val ry = dx * sin + dy * cos
 
-                    offset = Offset(
+                    // 1. Calculate base new offset
+                    var newOffset = Offset(
                         x = offset.x + pan.x + dx - (rx * scaleRatio),
                         y = offset.y + pan.y + dy - (ry * scaleRatio)
                     )
 
+                    // 2. APPLY PAN LOCKING (Constraint to keep map visible)
+                    // We allow some "gray background" but not infinite.
+                    // Max distance from center is roughly half map size * scale
+                    if (containerSize.width > 0) {
+                        val maxPanX = renderedWidth * scale / 1.5f
+                        val maxPanY = renderedHeight * scale / 1.5f
+                        
+                        // We need to be careful with coordinate systems here. 
+                        // Simplified approach: Limit offset based on total rendered dimensions
+                        // but since the map can rotate, we use a simpler circular or box limit
+                        // centered around the original middle.
+                        
+                        // For this custom implementation, we'll just clamp to a reasonable multiple of container size
+                        val limitX = containerSize.width * 2f * scale
+                        val limitY = containerSize.height * 2f * scale
+                        
+                        newOffset = Offset(
+                            newOffset.x.coerceIn(-limitX, limitX),
+                            newOffset.y.coerceIn(-limitY, limitY)
+                        )
+                    }
+
+                    offset = newOffset
                     scale = newScale
                     rotation += effectiveRotation
                 }
@@ -786,6 +814,79 @@ fun InteractiveMap(
                 },
                 viewModel = viewModel
             )
+        }
+
+        // OFF-MAP INDICATOR
+        navInfo?.let { info ->
+            if (info.isOffMap) {
+                OffMapIndicator(
+                    bearing = info.bearing,
+                    distanceText = viewModel.formatDistance(info.distance),
+                    mapRotation = currentRotation
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun OffMapIndicator(
+    bearing: Float,
+    distanceText: String,
+    mapRotation: Float
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val w = constraints.maxWidth.toFloat()
+        val h = constraints.maxHeight.toFloat()
+        val centerX = w / 2
+        val centerY = h / 2
+
+        // The arrow should point to the user's bearing RELATIVE to current map rotation
+        val screenBearing = (bearing + mapRotation) % 360f
+        val rad = Math.toRadians(screenBearing.toDouble())
+        val dx = sin(rad).toFloat()
+        val dy = -cos(rad).toFloat()
+
+        // Intersection with screen edges
+        val tx = if (dx != 0f) abs(centerX / dx) else Float.MAX_VALUE
+        val ty = if (dy != 0f) abs(centerY / dy) else Float.MAX_VALUE
+        val t = min(tx, ty)
+
+        // Margin from edge
+        val margin = 48.dp.value * LocalDensity.current.density
+        val edgeT = t - margin
+
+        val posX = centerX + edgeT * dx
+        val posY = centerY + edgeT * dy
+
+        Column(
+            modifier = Modifier
+                .offset { IntOffset(posX.roundToInt(), posY.roundToInt()) }
+                .graphicsLayer {
+                    translationX = -50f // Rough centering of the icon/text column
+                    translationY = -50f
+                },
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Default.ArrowUpward,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(40.dp)
+                    .graphicsLayer { rotationZ = screenBearing },
+                tint = Color.Red
+            )
+            Surface(
+                color = Color.Black.copy(alpha = 0.6f),
+                shape = CircleShape
+            ) {
+                Text(
+                    text = distanceText,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
         }
     }
 }

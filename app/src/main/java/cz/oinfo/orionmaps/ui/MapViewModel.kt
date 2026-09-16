@@ -27,15 +27,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.zip.ZipInputStream
+import kotlin.math.roundToInt
 
 data class RecentMap(val uriString: String, val name: String)
 
 data class MapGeoreference(val north: Double, val south: Double, val east: Double, val west: Double, val rotation: Double = 0.0)
+
+data class NavigationInfo(val distance: Float, val bearing: Float, val isOffMap: Boolean)
 
 enum class GpsMode {
     HIDDEN, FREE, FOLLOW, COMPASS_ONLY
@@ -84,6 +88,39 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     val hasRecordedData: StateFlow<Boolean> = _recordedTrack
         .map { it.isNotEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val userNavigationInfo: StateFlow<NavigationInfo?> = combine(_currentLocation, _uiState) { location, state ->
+        if (location != null && state is MapUiState.Success && state.georeference != null) {
+            val geo = state.georeference
+            val mapCenterLat = (geo.north + geo.south) / 2.0
+            val mapCenterLon = (geo.east + geo.west) / 2.0
+
+            val results = FloatArray(2)
+            Location.distanceBetween(
+                mapCenterLat, mapCenterLon,
+                location.latitude, location.longitude,
+                results
+            )
+            NavigationInfo(
+                distance = results[0],
+                bearing = (results[1] + 360f) % 360f,
+                isOffMap = isLocationOutside(location, geo)
+            )
+        } else null
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    private fun isLocationOutside(loc: Location, geo: MapGeoreference): Boolean {
+        return loc.latitude > geo.north || loc.latitude < geo.south ||
+                loc.longitude > geo.east || loc.longitude < geo.west
+    }
+
+    fun formatDistance(distance: Float): String {
+        return if (distance < 1000) {
+            "${distance.roundToInt()} m"
+        } else {
+            "%.1f km".format(java.util.Locale.US, distance / 1000f)
+        }
+    }
 
     private val _isTrackSaved = MutableStateFlow(true)
     val isTrackSaved: StateFlow<Boolean> = _isTrackSaved.asStateFlow()
