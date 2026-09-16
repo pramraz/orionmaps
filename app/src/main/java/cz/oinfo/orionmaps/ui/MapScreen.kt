@@ -344,7 +344,6 @@ fun InteractiveMap(
     val isRecording by viewModel.isRecording.collectAsState()
     val showRecordedTrack by viewModel.showRecordedTrack.collectAsState()
     val recordedTrack by viewModel.recordedTrack.collectAsState()
-    val navInfo by viewModel.userNavigationInfo.collectAsState()
 
     val context = LocalContext.current
 
@@ -441,7 +440,56 @@ fun InteractiveMap(
     val latestActiveOffset by rememberUpdatedState(calculatedActiveOffset)
     val latestRotation by rememberUpdatedState(currentRotation)
 
-    // --- 2. GESTURE DETECTOR ---
+    // --- 3. DYNAMIC NAVIGATION LOGIC (SCREEN CENTER) ---
+    val dynamicNavInfo = remember(currentLocation, calculatedActiveOffset, scale, currentRotation, containerSize, georeference) {
+        if (georeference != null && currentLocation != null && containerSize.width > 0) {
+            // 1. Calculate screen coordinates of the GPS dot
+            val angleInRadians = currentRotation * PI / 180.0
+            val cos = cos(angleInRadians).toFloat()
+            val sin = sin(angleInRadians).toFloat()
+
+            val rx = (baseDotX * scale) * cos - (baseDotY * scale) * sin
+            val ry = (baseDotX * scale) * sin + (baseDotY * scale) * cos
+            
+            val screenDotX = calculatedActiveOffset.x + rx
+            val screenDotY = calculatedActiveOffset.y + ry
+            
+            // 2. Check if dot is on screen
+            val isDotOnScreen = screenDotX in 0f..containerSize.width.toFloat() && 
+                               screenDotY in 0f..containerSize.height.toFloat()
+            
+            if (isDotOnScreen) {
+                null
+            } else {
+                // 3. Find Geo-coordinates of the screen center
+                // Reverse the transformation: screenCenter -> Map Local -> Geo
+                val centerX = containerSize.width / 2f
+                val centerY = containerSize.height / 2f
+                
+                // Remove translation
+                val tx = centerX - calculatedActiveOffset.x
+                val ty = centerY - calculatedActiveOffset.y
+                
+                // Remove rotation (inverse rotation)
+                val invAngle = -currentRotation * PI / 180.0
+                val iCos = cos(invAngle).toFloat()
+                val iSin = sin(invAngle).toFloat()
+                
+                val lx = (tx * iCos - ty * iSin) / scale
+                val ly = (tx * iSin + ty * iCos) / scale
+                
+                // Map Local (lx, ly) relative to rendered image
+                val percX = (lx - renderOffsetX) / renderedWidth
+                val percY = (ly - renderOffsetY) / renderedHeight
+                
+                val centerGeo = getGeoFromPercentages(percX, percY, georeference)
+                
+                viewModel.calculateNavigation(currentLocation!!, centerGeo.first, centerGeo.second)
+            }
+        } else null
+    }
+
+    // --- 4. GESTURE DETECTOR ---
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -817,14 +865,12 @@ fun InteractiveMap(
         }
 
         // OFF-MAP INDICATOR
-        navInfo?.let { info ->
-            if (info.isOffMap) {
-                OffMapIndicator(
-                    bearing = info.bearing,
-                    distanceText = viewModel.formatDistance(info.distance),
-                    mapRotation = currentRotation
-                )
-            }
+        dynamicNavInfo?.let { info ->
+            OffMapIndicator(
+                bearing = info.bearing,
+                distanceText = viewModel.formatDistance(info.distance),
+                mapRotation = currentRotation
+            )
         }
     }
 }
@@ -1140,6 +1186,34 @@ fun getMapPercentages(
     val percentY = ((geo.north - geo.south) / 2.0 - rotDLat) / (geo.north - geo.south)
 
     return Pair(percentX.toFloat(), percentY.toFloat())
+}
+
+fun getGeoFromPercentages(
+    percentX: Float,
+    percentY: Float,
+    geo: MapGeoreference
+): Pair<Double, Double> {
+    val midLat = (geo.north + geo.south) / 2.0
+    val midLon = (geo.east + geo.west) / 2.0
+
+    // Inverse of getMapPercentages
+    val rotDLon = percentX.toDouble() * (geo.east - geo.west) - (geo.east - geo.west) / 2.0
+    val rotDLat = (geo.north - geo.south) / 2.0 - percentY.toDouble() * (geo.north - geo.south)
+
+    val aspect = kotlin.math.cos(Math.toRadians(midLat))
+    val rotDLonAdj = rotDLon * aspect
+
+    // Inverse rotation
+    val angleRad = Math.toRadians(geo.rotation) // Positive rotation for inverse
+    val cos = kotlin.math.cos(angleRad)
+    val sin = kotlin.math.sin(angleRad)
+
+    val dLonAdj = rotDLonAdj * cos - rotDLat * sin
+    val dLat = rotDLonAdj * sin + rotDLat * cos
+
+    val dLon = dLonAdj / aspect
+
+    return Pair(midLat + dLat, midLon + dLon)
 }
 
 @Composable

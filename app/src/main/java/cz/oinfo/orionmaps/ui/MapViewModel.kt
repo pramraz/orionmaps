@@ -109,6 +109,20 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         } else null
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    fun calculateNavigation(userLoc: Location, targetLat: Double, targetLon: Double): NavigationInfo {
+        val results = FloatArray(2)
+        Location.distanceBetween(
+            userLoc.latitude, userLoc.longitude,
+            targetLat, targetLon,
+            results
+        )
+        return NavigationInfo(
+            distance = results[0],
+            bearing = (results[1] + 360f) % 360f,
+            isOffMap = true // This is now handled by screen visibility
+        )
+    }
+
     private fun isLocationOutside(loc: Location, geo: MapGeoreference): Boolean {
         return loc.latitude > geo.north || loc.latitude < geo.south ||
                 loc.longitude > geo.east || loc.longitude < geo.west
