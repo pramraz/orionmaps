@@ -422,17 +422,27 @@ fun InteractiveMap(
     }
 
     val calculatedActiveOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
-        val targetX = containerSize.width / 2f
-        val targetY = if (gpsMode == GpsMode.FREE) containerSize.height * 0.5f else containerSize.height * 0.7f
+        // FIX: Only auto-center if the location is INSIDE the map bounds
+        val isInside = currentLocation!!.latitude <= georeference.north && 
+                       currentLocation!!.latitude >= georeference.south &&
+                       currentLocation!!.longitude <= georeference.east && 
+                       currentLocation!!.longitude >= georeference.west
 
-        val angleInRadians = currentRotation * PI / 180.0
-        val cos = cos(angleInRadians).toFloat()
-        val sin = sin(angleInRadians).toFloat()
+        if (isInside) {
+            val targetX = containerSize.width / 2f
+            val targetY = if (gpsMode == GpsMode.FREE) containerSize.height * 0.5f else containerSize.height * 0.7f
 
-        val rx = (baseDotX * scale) * cos - (baseDotY * scale) * sin
-        val ry = (baseDotX * scale) * sin + (baseDotY * scale) * cos
+            val angleInRadians = currentRotation * PI / 180.0
+            val cos = cos(angleInRadians).toFloat()
+            val sin = sin(angleInRadians).toFloat()
 
-        Offset(targetX - rx, targetY - ry)
+            val rx = (baseDotX * scale) * cos - (baseDotY * scale) * sin
+            val ry = (baseDotX * scale) * sin + (baseDotY * scale) * cos
+
+            Offset(targetX - rx, targetY - ry)
+        } else {
+            offset // Keep current offset if location is off-map
+        }
     } else {
         offset
     }
