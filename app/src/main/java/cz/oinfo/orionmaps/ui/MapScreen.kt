@@ -484,7 +484,18 @@ fun InteractiveMap(
                 
                 val centerGeo = getGeoFromPercentages(percX, percY, georeference)
                 
-                viewModel.calculateNavigation(currentLocation!!, centerGeo.first, centerGeo.second)
+                // FIX 1: Calculate bearing FROM screen center TO user location
+                val results = FloatArray(2)
+                android.location.Location.distanceBetween(
+                    centerGeo.first, centerGeo.second,
+                    currentLocation!!.latitude, currentLocation!!.longitude,
+                    results
+                )
+                NavigationInfo(
+                    distance = results[0],
+                    bearing = (results[1] + 360f) % 360f,
+                    isOffMap = true
+                )
             }
         } else null
     }
@@ -894,13 +905,14 @@ fun OffMapIndicator(
         val dy = -cos(rad).toFloat()
 
         // Intersection with screen edges
-        val tx = if (dx != 0f) abs(centerX / dx) else Float.MAX_VALUE
-        val ty = if (dy != 0f) abs(centerY / dy) else Float.MAX_VALUE
-        val t = min(tx, ty)
+        // We use centerX and centerY because the vector starts from the center
+        val tx = if (dx > 0) (w - centerX) / dx else if (dx < 0) -centerX / dx else Float.MAX_VALUE
+        val ty = if (dy > 0) (h - centerY) / dy else if (dy < 0) -centerY / dy else Float.MAX_VALUE
+        val t = min(abs(tx), abs(ty))
 
-        // Margin from edge
-        val margin = 48.dp.value * LocalDensity.current.density
-        val edgeT = t - margin
+        // Margin from edge (to make icon fully visible)
+        val margin = 28.dp.value * LocalDensity.current.density
+        val edgeT = (t - margin).coerceAtLeast(0f)
 
         val posX = centerX + edgeT * dx
         val posY = centerY + edgeT * dy
@@ -909,7 +921,7 @@ fun OffMapIndicator(
             modifier = Modifier
                 .offset { IntOffset(posX.roundToInt(), posY.roundToInt()) }
                 .graphicsLayer {
-                    translationX = -50f // Rough centering of the icon/text column
+                    translationX = -50f // Pivot point is center of this column
                     translationY = -50f
                 },
             horizontalAlignment = Alignment.CenterHorizontally
@@ -919,7 +931,10 @@ fun OffMapIndicator(
                 contentDescription = null,
                 modifier = Modifier
                     .size(40.dp)
-                    .graphicsLayer { rotationZ = screenBearing },
+                    .graphicsLayer { 
+                        rotationZ = screenBearing 
+                        // The arrow icon points UP by default, which matches our -cos(rad) logic
+                    },
                 tint = Color.Red
             )
             Surface(
