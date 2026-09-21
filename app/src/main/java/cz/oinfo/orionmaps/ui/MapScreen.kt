@@ -10,6 +10,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -421,8 +425,8 @@ fun InteractiveMap(
         baseDotY = 0f
     }
 
+    // 1. Calculate active target offset
     val calculatedActiveOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
-        // FIX: Only auto-center if the location is INSIDE the map bounds
         val isInside = currentLocation!!.latitude <= georeference.north && 
                        currentLocation!!.latitude >= georeference.south &&
                        currentLocation!!.longitude <= georeference.east && 
@@ -441,7 +445,7 @@ fun InteractiveMap(
 
             Offset(targetX - rx, targetY - ry)
         } else {
-            offset // Keep current offset if location is off-map
+            offset
         }
     } else {
         offset
@@ -449,6 +453,18 @@ fun InteractiveMap(
 
     val latestActiveOffset by rememberUpdatedState(calculatedActiveOffset)
     val latestRotation by rememberUpdatedState(currentRotation)
+
+    // 2. Smoothly animate ONLY when receiving GPS position updates while tracking is active
+    val isAutoFollowing = (gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended
+    
+    val animatedGpsOffset = animateOffsetAsState(
+        targetValue = calculatedActiveOffset,
+        animationSpec = tween(durationMillis = 1000),
+        label = "smoothMapOffset"
+    ).value
+
+    // Use animated value ONLY during auto-following, otherwise use raw 'offset' directly
+    val displayOffset = if (isAutoFollowing) animatedGpsOffset else offset
 
     // --- 3. DYNAMIC NAVIGATION LOGIC (SCREEN CENTER) ---
     val dynamicNavInfo = remember(currentLocation, calculatedActiveOffset, scale, currentRotation, containerSize, georeference) {
@@ -518,7 +534,7 @@ fun InteractiveMap(
             .pointerInput(gestureMode, gpsMode) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
                     // CRITICAL FIX: Synchronize states BEFORE suspending tracking
-                    if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && (pan != Offset.Zero || zoom != 1f)) {
+                    if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && (pan != Offset.Zero || zoom != 1f || rotate != 0f)) {
                         offset = latestActiveOffset
                         rotation = latestRotation
                         viewModel.setTrackingSuspended(true)
@@ -594,8 +610,8 @@ fun InteractiveMap(
                 .fillMaxSize()
                 .graphicsLayer {
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                    translationX = calculatedActiveOffset.x
-                    translationY = calculatedActiveOffset.y
+                    translationX = displayOffset.x
+                    translationY = displayOffset.y
                     scaleX = scale
                     scaleY = scale
                     rotationZ = currentRotation
