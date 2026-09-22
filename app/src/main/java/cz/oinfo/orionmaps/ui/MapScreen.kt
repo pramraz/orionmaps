@@ -8,8 +8,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -399,8 +404,12 @@ fun InteractiveMap(
 
     var showRecentMapsDialog by remember { mutableStateOf(false) }
 
+    var isReCentering by remember { mutableStateOf(false) }
+    var recenterJob by remember { mutableStateOf<Job?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
     // --- 1. HOISTED MATH CALCULATIONS ---
-    val currentRotation = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && !isTrackingSuspended) -compassBearing else rotation
+    val currentRotation = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) && !isTrackingSuspended && !isReCentering) -compassBearing else rotation
 
     val imgRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
     val containerRatio = if (containerSize.height > 0) containerSize.width.toFloat() / containerSize.height.toFloat() else 1f
@@ -421,7 +430,7 @@ fun InteractiveMap(
         baseDotY = 0f
     }
 
-    val calculatedActiveOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
+    val calculatedActiveOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && !isReCentering && currentLocation != null && georeference != null && containerSize.width > 0) {
         // FIX: Only auto-center if the location is INSIDE the map bounds
         val isInside = currentLocation!!.latitude <= georeference.north && 
                        currentLocation!!.latitude >= georeference.south &&
@@ -449,6 +458,79 @@ fun InteractiveMap(
 
     val latestActiveOffset by rememberUpdatedState(calculatedActiveOffset)
     val latestRotation by rememberUpdatedState(currentRotation)
+
+    fun recenterToUser() {
+        val loc = currentLocation
+        val geo = georeference
+        if (loc == null || geo == null || containerSize.width <= 0) {
+            viewModel.setTrackingSuspended(false)
+            return
+        }
+
+        val isInside = loc.latitude <= geo.north && 
+                       loc.latitude >= geo.south &&
+                       loc.longitude <= geo.east && 
+                       loc.longitude >= geo.west
+
+        if (!isInside) {
+            viewModel.setTrackingSuspended(false)
+            return
+        }
+
+        val targetRot = if (gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) {
+            -compassBearing
+        } else {
+            rotation
+        }
+
+        val targetX = containerSize.width / 2f
+        val targetY = if (gpsMode == GpsMode.FREE) containerSize.height * 0.5f else containerSize.height * 0.7f
+
+        val angleInRadians = targetRot * PI / 180.0
+        val cosVal = cos(angleInRadians).toFloat()
+        val sinVal = sin(angleInRadians).toFloat()
+
+        val percentPos = getMapPercentages(loc, geo)
+        val dotX = renderOffsetX + percentPos.first * renderedWidth
+        val dotY = renderOffsetY + percentPos.second * renderedHeight
+
+        val rx = (dotX * scale) * cosVal - (dotY * scale) * sinVal
+        val ry = (dotX * scale) * sinVal + (dotY * scale) * cosVal
+
+        val targetOffset = Offset(targetX - rx, targetY - ry)
+
+        recenterJob?.cancel()
+        recenterJob = coroutineScope.launch {
+            isReCentering = true
+            val startOffset = offset
+            val startRotation = rotation
+
+            var diffRot = (targetRot - startRotation) % 360f
+            if (diffRot > 180f) diffRot -= 360f
+            if (diffRot < -180f) diffRot += 360f
+
+            val animatable = Animatable(0f)
+            animatable.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 300,
+                    easing = FastOutSlowInEasing
+                )
+            ) {
+                val progress = value
+                offset = Offset(
+                    x = startOffset.x + (targetOffset.x - startOffset.x) * progress,
+                    y = startOffset.y + (targetOffset.y - startOffset.y) * progress
+                )
+                rotation = startRotation + diffRot * progress
+            }
+
+            offset = targetOffset
+            rotation = targetRot
+            isReCentering = false
+            viewModel.setTrackingSuspended(false)
+        }
+    }
 
     // --- 3. DYNAMIC NAVIGATION LOGIC (SCREEN CENTER) ---
     val dynamicNavInfo = remember(currentLocation, calculatedActiveOffset, scale, currentRotation, containerSize, georeference) {
@@ -517,6 +599,11 @@ fun InteractiveMap(
             .onGloballyPositioned { containerSize = it.size }
             .pointerInput(gestureMode, gpsMode) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
+                    if (isReCentering) {
+                        recenterJob?.cancel()
+                        isReCentering = false
+                    }
+
                     // CRITICAL FIX: Synchronize states BEFORE suspending tracking
                     if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && (pan != Offset.Zero || zoom != 1f)) {
                         offset = latestActiveOffset
@@ -805,7 +892,7 @@ fun InteractiveMap(
                 FloatingActionButton(
                     onClick = {
                         if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && isTrackingSuspended) {
-                            viewModel.setTrackingSuspended(false)
+                            recenterToUser()
                         } else {
                             viewModel.cycleGpsMode()
                             // Trigger notification with the NEW mode
