@@ -426,7 +426,8 @@ fun InteractiveMap(
     }
 
     // 1. Calculate active target offset
-    val calculatedActiveOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
+    // 1. Calculate active target offset (unrotated base target)
+    val rawTargetOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && currentLocation != null && georeference != null && containerSize.width > 0) {
         val isInside = currentLocation!!.latitude <= georeference.north && 
                        currentLocation!!.latitude >= georeference.south &&
                        currentLocation!!.longitude <= georeference.east && 
@@ -436,14 +437,8 @@ fun InteractiveMap(
             val targetX = containerSize.width / 2f
             val targetY = if (gpsMode == GpsMode.FREE) containerSize.height * 0.5f else containerSize.height * 0.7f
 
-            val angleInRadians = currentRotation * PI / 180.0
-            val cos = cos(angleInRadians).toFloat()
-            val sin = sin(angleInRadians).toFloat()
-
-            val rx = (baseDotX * scale) * cos - (baseDotY * scale) * sin
-            val ry = (baseDotX * scale) * sin + (baseDotY * scale) * cos
-
-            Offset(targetX - rx, targetY - ry)
+            // Unrotated target offset (offset needed at 0 degrees rotation)
+            Offset(targetX - baseDotX * scale, targetY - baseDotY * scale)
         } else {
             offset
         }
@@ -451,20 +446,37 @@ fun InteractiveMap(
         offset
     }
 
+    val isAutoFollowing = (gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended
+
+    // 2. Smoothly animate ONLY the unrotated base offset when GPS updates arrive
+    val animatedBaseOffset = animateOffsetAsState(
+        targetValue = rawTargetOffset,
+        animationSpec = tween(durationMillis = 1000),
+        label = "smoothBaseOffset"
+    ).value
+
+    // 3. Compute final active offset by applying current compass rotation dynamically to the smoothed base position
+    val calculatedActiveOffset = if (isAutoFollowing) {
+        val targetX = containerSize.width / 2f
+        val targetY = if (gpsMode == GpsMode.FREE) containerSize.height * 0.5f else containerSize.height * 0.7f
+
+        val angleInRadians = currentRotation * PI / 180.0
+        val cos = cos(angleInRadians).toFloat()
+        val sin = sin(angleInRadians).toFloat()
+
+        // Apply rotation to the smoothed base position without re-triggering offset animation!
+        val rx = (baseDotX * scale) * cos - (baseDotY * scale) * sin
+        val ry = (baseDotX * scale) * sin + (baseDotY * scale) * cos
+
+        Offset(targetX - rx, targetY - ry)
+    } else {
+        offset
+    }
+
     val latestActiveOffset by rememberUpdatedState(calculatedActiveOffset)
     val latestRotation by rememberUpdatedState(currentRotation)
 
-    // 2. Smoothly animate ONLY when receiving GPS position updates while tracking is active
-    val isAutoFollowing = (gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended
-    
-    val animatedGpsOffset = animateOffsetAsState(
-        targetValue = calculatedActiveOffset,
-        animationSpec = tween(durationMillis = 1000),
-        label = "smoothMapOffset"
-    ).value
-
-    // Use animated value ONLY during auto-following, otherwise use raw 'offset' directly
-    val displayOffset = if (isAutoFollowing) animatedGpsOffset else offset
+    val displayOffset = if (isAutoFollowing) calculatedActiveOffset else offset
 
     // --- 3. DYNAMIC NAVIGATION LOGIC (SCREEN CENTER) ---
     val dynamicNavInfo = remember(currentLocation, calculatedActiveOffset, scale, currentRotation, containerSize, georeference) {

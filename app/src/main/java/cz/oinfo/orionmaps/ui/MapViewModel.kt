@@ -156,7 +156,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
     private var smoothedSin = 0.0
     private var smoothedCos = 0.0
-    private val ALPHA = 0.2f
+    private val ALPHA = 0.08f
 
     init {
         loadRecentMaps()
