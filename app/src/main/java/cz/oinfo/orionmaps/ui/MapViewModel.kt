@@ -578,10 +578,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun cycleGpsMode() {
         _gpsMode.value = when (_gpsMode.value) {
-            GpsMode.HIDDEN -> GpsMode.FOLLOW
-            GpsMode.FOLLOW -> GpsMode.FREE
-            GpsMode.FREE -> GpsMode.COMPASS_ONLY
             GpsMode.COMPASS_ONLY -> GpsMode.HIDDEN
+            GpsMode.HIDDEN -> GpsMode.FREE
+            GpsMode.FREE -> GpsMode.FOLLOW
+            GpsMode.FOLLOW -> GpsMode.COMPASS_ONLY
         }
         if (_gpsMode.value == GpsMode.FOLLOW) {
             _isTrackingSuspended.value = false
