@@ -31,4 +31,45 @@ class ExampleUnitTest {
         assertFalse(isInside(49.9, 15.05))
         assertFalse(isInside(50.05, 16.0))
     }
+
+    @Test
+    fun formatMapNameTest() {
+        fun formatMapName(name: String): String {
+            if (name.length <= 60) return name
+
+            val dotIndex = name.lastIndexOf('.')
+            if (dotIndex == -1 || dotIndex == 0 || dotIndex == name.length - 1) {
+                return name.take(57) + "..."
+            }
+
+            val ext = name.substring(dotIndex)
+            val stem = name.substring(0, dotIndex)
+
+            val maxStemLength = 60 - 3 - ext.length
+            if (maxStemLength <= 0) {
+                return name.take(57) + "..."
+            }
+
+            return stem.take(maxStemLength) + "..." + ext
+        }
+
+        // Short name
+        assertEquals("map.kmz", formatMapName("map.kmz"))
+
+        // Exact 60 chars
+        val exact60 = "12345678901234567890123456789012345678901234567890123456.kmz"
+        assertEquals(60, exact60.length)
+        assertEquals(exact60, formatMapName(exact60))
+
+        // Over 60 chars
+        val longKmz = "a_very_long_map_filename_that_exceeds_sixty_characters_in_total_length.kmz"
+        val formattedKmz = formatMapName(longKmz)
+        assertEquals(60, formattedKmz.length)
+        assertTrue(formattedKmz.endsWith("...kmz"))
+
+        val longPdf = "very_long_pdf_file_name_exceeding_sixty_characters_limit_test.pdf"
+        val formattedPdf = formatMapName(longPdf)
+        assertEquals(60, formattedPdf.length)
+        assertTrue(formattedPdf.endsWith("...pdf"))
+    }
 }

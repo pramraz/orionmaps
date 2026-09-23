@@ -1344,6 +1344,25 @@ fun getGeoFromPercentages(
     return Pair(midLat + dLat, midLon + dLon)
 }
 
+fun formatMapName(name: String): String {
+    if (name.length <= 60) return name
+
+    val dotIndex = name.lastIndexOf('.')
+    if (dotIndex == -1 || dotIndex == 0 || dotIndex == name.length - 1) {
+        return name.take(57) + "..."
+    }
+
+    val ext = name.substring(dotIndex)
+    val stem = name.substring(0, dotIndex)
+
+    val maxStemLength = 60 - 3 - ext.length
+    if (maxStemLength <= 0) {
+        return name.take(57) + "..."
+    }
+
+    return stem.take(maxStemLength) + "..." + ext
+}
+
 @Composable
 fun RecentMapsDialog(
     onDismiss: () -> Unit,
@@ -1395,12 +1414,23 @@ fun RecentMapsDialog(
                         modifier = Modifier.heightIn(max = 400.dp)
                     ) {
                         items(recentMaps) { map ->
+                            val icon = if (map.name.endsWith(".pdf", ignoreCase = true)) {
+                                Icons.Default.PictureAsPdf
+                            } else {
+                                Icons.Default.Map
+                            }
                             ListItem(
+                                leadingContent = {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
                                 headlineContent = {
                                     Text(
-                                        text = map.name,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        text = formatMapName(map.name),
+                                        style = MaterialTheme.typography.bodyMedium
                                     )
                                 },
                                 trailingContent = {
