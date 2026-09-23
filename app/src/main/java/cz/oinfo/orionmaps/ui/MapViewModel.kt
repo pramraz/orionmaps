@@ -618,7 +618,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         _recordedTrack.value = emptyList()
     }
 
-    fun importGpx(uri: Uri) {
+    enum class GpxImportResult {
+        SUCCESS,
+        OUTSIDE_MAP,
+        ERROR
+    }
+
+    fun importGpx(uri: Uri, onResult: ((GpxImportResult) -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val inputStream = getApplication<Application>().contentResolver.openInputStream(uri)
@@ -635,13 +641,43 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                     }
                 }.toList()
 
+                if (parsedList.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        onResult?.invoke(GpxImportResult.ERROR)
+                    }
+                    return@launch
+                }
+
+                val state = _uiState.value as? MapUiState.Success
+                val geo = state?.georeference
+
+                if (geo != null) {
+                    val hasPointInside = parsedList.any { loc ->
+                        loc.latitude <= geo.north &&
+                        loc.latitude >= geo.south &&
+                        loc.longitude <= geo.east &&
+                        loc.longitude >= geo.west
+                    }
+
+                    if (!hasPointInside) {
+                        withContext(Dispatchers.Main) {
+                            onResult?.invoke(GpxImportResult.OUTSIDE_MAP)
+                        }
+                        return@launch
+                    }
+                }
+
                 withContext(Dispatchers.Main) {
                     _recordedTrack.value = parsedList
                     _showRecordedTrack.value = true
                     _isTrackSaved.value = true
+                    onResult?.invoke(GpxImportResult.SUCCESS)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    onResult?.invoke(GpxImportResult.ERROR)
+                }
             }
         }
     }

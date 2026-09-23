@@ -380,13 +380,19 @@ fun InteractiveMap(
         }
     }
 
+    val gpxOutsideMsg = stringResource(R.string.gpx_outside_map)
+
     val loadGpxLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
             val fileName = viewModel.getFileName(it) ?: ""
             if (fileName.endsWith(".gpx", ignoreCase = true)) {
-                viewModel.importGpx(it)
+                viewModel.importGpx(it) { result ->
+                    if (result == MapViewModel.GpxImportResult.OUTSIDE_MAP) {
+                        triggerNotification(gpxOutsideMsg)
+                    }
+                }
             }
         }
     }
@@ -880,7 +886,7 @@ fun InteractiveMap(
                     GpxMenuFab(
                         viewModel = viewModel,
                         onExportClick = { createGpxLauncher.launch("orion_track.gpx") },
-                        onLoadClick = { loadGpxLauncher.launch(arrayOf("*/*")) }
+                        onLoadClick = { loadGpxLauncher.launch(arrayOf("application/gpx+xml", "application/gpx", "application/xml", "text/xml")) }
                     )
                 }
 

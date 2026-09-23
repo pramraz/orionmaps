@@ -17,6 +17,7 @@
     <string name="show_track">Zobrazit trasu</string>
     <string name="save_track">Uložit trasu</string>
     <string name="load_gpx">Načíst GPX</string>
+    <string name="gpx_outside_map">Trasa leží mimo otevřenou mapu</string>
     <string name="clear_track">Smazat trasu</string>
     <string name="unsaved_track_title">Neuložená trasa</string>
     <string name="unsaved_track_message">Aktuální trasa není uložena. Chcete ji přesto smazat?</string>

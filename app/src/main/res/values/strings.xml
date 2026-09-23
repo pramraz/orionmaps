@@ -17,6 +17,7 @@
     <string name="show_track">Show Track</string>
     <string name="save_track">Save Track</string>
     <string name="load_gpx">Load GPX</string>
+    <string name="gpx_outside_map">The track lies outside the open map</string>
     <string name="clear_track">Clear Track</string>
     <string name="unsaved_track_title">Unsaved Track</string>
     <string name="unsaved_track_message">The current track is not saved. Do you want to delete it anyway?</string>
