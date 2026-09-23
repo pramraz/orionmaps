@@ -17,6 +17,7 @@ import android.net.Uri
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import java.io.File
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.location.*
@@ -162,6 +163,41 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         loadRecentMaps()
     }
 
+    suspend fun copyToInternalStorage(context: Context, uri: Uri): File? = withContext(Dispatchers.IO) {
+        try {
+            if (uri.scheme == "file") {
+                val existingFile = File(uri.path ?: "")
+                if (existingFile.exists() && existingFile.parentFile == context.filesDir) {
+                    return@withContext existingFile
+                }
+            }
+
+            val originalName = getFileName(uri) ?: "map_${System.currentTimeMillis()}"
+            var destFile = File(context.filesDir, originalName)
+            if (destFile.exists()) {
+                val nameWithoutExt = originalName.substringBeforeLast('.', originalName)
+                val ext = originalName.substringAfterLast('.', "")
+                val newName = if (ext.isNotEmpty() && ext != originalName) "${nameWithoutExt}_${System.currentTimeMillis()}.$ext" else "${nameWithoutExt}_${System.currentTimeMillis()}"
+                destFile = File(context.filesDir, newName)
+            }
+
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                destFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+
+            if (destFile.exists() && destFile.length() > 0) {
+                destFile
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     fun loadPdf(uri: Uri) {
         viewModelScope.launch {
             try {
@@ -179,14 +215,22 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             // CRITICAL: Use .commit() to ensure the flag is written to disk IMMEDIATELY
             sharedPreferences.edit().putBoolean("is_loading_map", true).commit()
 
-            val bitmap = renderPdfFirstPage(uri)
+            val localFile = copyToInternalStorage(getApplication(), uri)
+            if (localFile == null) {
+                sharedPreferences.edit().remove("is_loading_map").apply()
+                _uiState.value = MapUiState.Error("Failed to copy PDF to internal storage")
+                return@launch
+            }
+
+            val localUri = Uri.fromFile(localFile)
+            val bitmap = renderPdfFirstPage(localUri)
             
             // Clear loading flag
             sharedPreferences.edit().remove("is_loading_map").apply()
 
             if (bitmap != null) {
                 _uiState.value = MapUiState.Success(bitmap)
-                addRecentMap(uri)
+                addRecentMap(localUri)
             } else {
                 if (_uiState.value !is MapUiState.Error) {
                     _uiState.value = MapUiState.Error("Failed to render PDF")
@@ -213,11 +257,18 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             
             withContext(Dispatchers.IO) {
                 try {
+                    val localFile = copyToInternalStorage(getApplication(), uri)
+                    if (localFile == null) {
+                        _uiState.value = MapUiState.Error("Failed to copy KMZ to internal storage")
+                        return@withContext
+                    }
+
+                    val localUri = Uri.fromFile(localFile)
                     val contentResolver = getApplication<Application>().contentResolver
                     
                     // First pass: Find KML and parse tile structure
                     var kmlContent: String? = null
-                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                    contentResolver.openInputStream(localUri)?.use { inputStream ->
                         ZipInputStream(inputStream).use { zipInputStream ->
                             var entry = zipInputStream.nextEntry
                             while (entry != null) {
@@ -243,7 +294,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
                     // Second pass: Load images and stitch
                     val tileBitmaps = mutableMapOf<String, Bitmap>()
-                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                    contentResolver.openInputStream(localUri)?.use { inputStream ->
                         ZipInputStream(inputStream).use { zipInputStream ->
                             var entry = zipInputStream.nextEntry
                             while (entry != null) {
@@ -298,7 +349,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                         _isTrackingSuspended.value = false
 
                         withContext(Dispatchers.Main) {
-                            addRecentMap(uri)
+                            addRecentMap(localUri)
                         }
                     } else if (_uiState.value !is MapUiState.Error) {
                         _uiState.value = MapUiState.Error("Failed to stitch map tiles")
@@ -508,7 +559,44 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         }
     }
 
+    fun deleteRecentMap(map: RecentMap) {
+        try {
+            val uri = Uri.parse(map.uriString)
+            if (uri.scheme == "file") {
+                val path = uri.path
+                if (path != null) {
+                    val file = File(path)
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        val newList = _recentMaps.value.toMutableList()
+        newList.removeAll { it.uriString == map.uriString }
+        _recentMaps.value = newList
+        saveRecentMaps(newList)
+    }
+
     fun clearRecentMaps() {
+        _recentMaps.value.forEach { map ->
+            try {
+                val uri = Uri.parse(map.uriString)
+                if (uri.scheme == "file") {
+                    val path = uri.path
+                    if (path != null) {
+                        val file = File(path)
+                        if (file.exists()) {
+                            file.delete()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         _recentMaps.value = emptyList()
         sharedPreferences.edit().remove("maps_json").apply()
     }

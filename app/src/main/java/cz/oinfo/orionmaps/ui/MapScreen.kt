@@ -1353,6 +1353,9 @@ fun RecentMapsDialog(
     val recentMaps by viewModel.recentMaps.collectAsState()
     val context = LocalContext.current
 
+    var showClearAllWarning by remember { mutableStateOf(false) }
+    var mapToDelete by remember { mutableStateOf<RecentMap?>(null) }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.large,
@@ -1374,8 +1377,10 @@ fun RecentMapsDialog(
                         text = stringResource(R.string.recent_maps),
                         style = MaterialTheme.typography.headlineSmall
                     )
-                    IconButton(onClick = { viewModel.clearRecentMaps() }) {
-                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.clear_list))
+                    if (recentMaps.isNotEmpty()) {
+                        IconButton(onClick = { showClearAllWarning = true }) {
+                            Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.clear_list))
+                        }
                     }
                 }
 
@@ -1397,6 +1402,11 @@ fun RecentMapsDialog(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = { mapToDelete = map }) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.delete_map_title))
+                                    }
                                 },
                                 modifier = Modifier.clickable {
                                     try {
@@ -1422,5 +1432,51 @@ fun RecentMapsDialog(
                 }
             }
         }
+    }
+
+    if (showClearAllWarning) {
+        AlertDialog(
+            onDismissRequest = { showClearAllWarning = false },
+            title = { Text(stringResource(R.string.delete_all_maps_title)) },
+            text = { Text(stringResource(R.string.delete_all_maps_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearRecentMaps()
+                        showClearAllWarning = false
+                    }
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllWarning = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    mapToDelete?.let { map ->
+        AlertDialog(
+            onDismissRequest = { mapToDelete = null },
+            title = { Text(stringResource(R.string.delete_map_title)) },
+            text = { Text(stringResource(R.string.delete_map_message, map.name)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteRecentMap(map)
+                        mapToDelete = null
+                    }
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { mapToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }

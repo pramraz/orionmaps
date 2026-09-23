@@ -32,6 +32,10 @@
     <string name="track_recording_desc">Povolí sledování cesty a export do GPX</string>
     <string name="no_recent_maps">Žádné nedávné mapy</string>
     <string name="clear_list">Vymazat seznam</string>
+    <string name="delete_map_title">Smazat mapu</string>
+    <string name="delete_map_message">Opravdu smazat mapu "%1$s"? Mapa bude smazána z paměti aplikace a již nebude dostupná offline.</string>
+    <string name="delete_all_maps_title">Smazat všechny mapy</string>
+    <string name="delete_all_maps_message">Opravdu smazat všechny nedávné mapy? Všechny mapy budou smazány z paměti aplikace a již nebudou dostupné offline.</string>
     <string name="error_opening_map">Nepodařilo se načíst mapu</string>
     <string name="open_last_map">Otevřít poslední mapu</string>
     <string name="recenter">Vycentrovat</string>

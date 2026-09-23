@@ -32,6 +32,10 @@
     <string name="track_recording_desc">Enable path tracking and GPX export</string>
     <string name="no_recent_maps">No recent maps</string>
     <string name="clear_list">Clear List</string>
+    <string name="delete_map_title">Delete map</string>
+    <string name="delete_map_message">Are you sure you want to delete "%1$s"? The map will be deleted from app memory and will no longer be available offline.</string>
+    <string name="delete_all_maps_title">Delete all maps</string>
+    <string name="delete_all_maps_message">Are you sure you want to delete all recent maps? All maps will be deleted from app memory and will no longer be available offline.</string>
     <string name="error_opening_map">Failed to load map</string>
     <string name="open_last_map">Open last map</string>
     <string name="recenter">Recenter</string>
