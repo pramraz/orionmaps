@@ -936,9 +936,9 @@ fun InteractiveMap(
             FloatingActionButton(
                 onClick = {
                     gestureMode = when (gestureMode) {
-                        GestureMode.ALL -> GestureMode.LOCK_ROTATION
-                        GestureMode.LOCK_ROTATION -> GestureMode.LOCK_ZOOM
-                        GestureMode.LOCK_ZOOM -> GestureMode.ALL
+                        GestureMode.ALL -> GestureMode.LOCK_ZOOM
+                        GestureMode.LOCK_ZOOM -> GestureMode.LOCK_ROTATION
+                        GestureMode.LOCK_ROTATION -> GestureMode.ALL
                     }
                     triggerNotification(when (gestureMode) {
                         GestureMode.ALL -> modeAll
