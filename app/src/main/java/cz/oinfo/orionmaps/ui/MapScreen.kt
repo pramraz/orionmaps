@@ -885,7 +885,7 @@ fun InteractiveMap(
                 if (isRecordingEnabled) {
                     GpxMenuFab(
                         viewModel = viewModel,
-                        onExportClick = { createGpxLauncher.launch("orion_track.gpx") },
+                        onExportClick = { createGpxLauncher.launch(viewModel.getSuggestedGpxFilename()) },
                         onLoadClick = { loadGpxLauncher.launch(arrayOf("application/gpx+xml", "application/gpx", "application/xml", "text/xml")) }
                     )
                 }

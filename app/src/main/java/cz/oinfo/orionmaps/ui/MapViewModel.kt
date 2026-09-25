@@ -800,6 +800,24 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         return sb.toString()
     }
 
+    fun getSuggestedGpxFilename(): String {
+        val currentMapName = _recentMaps.value.firstOrNull()?.name ?: "map"
+        val stem = currentMapName.substringBeforeLast('.', currentMapName)
+        
+        val normalized = java.text.Normalizer.normalize(stem, java.text.Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+        
+        val sanitized = normalized
+            .trim()
+            .lowercase(java.util.Locale.US)
+            .replace("[^a-z0-9_-]+".toRegex(), "-")
+            .trim('-')
+            .ifEmpty { "map" }
+
+        val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        return "${sanitized}_${dateStr}.gpx"
+    }
+
     fun getVersionName(): String {
         return try {
             val packageInfo = getApplication<Application>().packageManager.getPackageInfo(getApplication<Application>().packageName, 0)

@@ -72,4 +72,23 @@ class ExampleUnitTest {
         assertEquals(60, formattedPdf.length)
         assertTrue(formattedPdf.endsWith("...pdf"))
     }
+
+    @Test
+    fun suggestedGpxFilenameSanitizationTest() {
+        fun sanitizeName(mapName: String): String {
+            val stem = mapName.substringBeforeLast('.', mapName)
+            val normalized = java.text.Normalizer.normalize(stem, java.text.Normalizer.Form.NFD)
+                .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            return normalized
+                .trim()
+                .lowercase(java.util.Locale.US)
+                .replace("[^a-z0-9_-]+".toRegex(), "-")
+                .trim('-')
+                .ifEmpty { "map" }
+        }
+
+        assertEquals("moje-mapa", sanitizeName("Moje Mapa.kmz"))
+        assertEquals("prilis-zlutoucky-kun_ob2026", sanitizeName("Příliš žluťoučký kůň_OB2026.pdf"))
+        assertEquals("map", sanitizeName("!!!.kmz"))
+    }
 }
