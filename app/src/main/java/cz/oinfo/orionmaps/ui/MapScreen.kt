@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -1344,20 +1345,20 @@ fun getGeoFromPercentages(
     return Pair(midLat + dLat, midLon + dLon)
 }
 
-fun formatMapName(name: String): String {
-    if (name.length <= 60) return name
+fun formatMapName(name: String, maxChars: Int = 100): String {
+    if (name.length <= maxChars) return name
 
     val dotIndex = name.lastIndexOf('.')
     if (dotIndex == -1 || dotIndex == 0 || dotIndex == name.length - 1) {
-        return name.take(57) + "..."
+        return name.take(maxChars - 3) + "..."
     }
 
     val ext = name.substring(dotIndex)
     val stem = name.substring(0, dotIndex)
 
-    val maxStemLength = 60 - 3 - ext.length
+    val maxStemLength = maxChars - 3 - ext.length
     if (maxStemLength <= 0) {
-        return name.take(57) + "..."
+        return name.take(maxChars - 3) + "..."
     }
 
     return stem.take(maxStemLength) + "..." + ext
@@ -1375,16 +1376,19 @@ fun RecentMapsDialog(
     var showClearAllWarning by remember { mutableStateOf(false) }
     var mapToDelete by remember { mutableStateOf<RecentMap?>(null) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 12.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(vertical = 16.dp, horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
@@ -1411,7 +1415,7 @@ fun RecentMapsDialog(
                     )
                 } else {
                     LazyColumn(
-                        modifier = Modifier.heightIn(max = 400.dp)
+                        modifier = Modifier.heightIn(max = 450.dp)
                     ) {
                         items(recentMaps) { map ->
                             val icon = if (map.name.endsWith(".pdf", ignoreCase = true)) {
@@ -1419,37 +1423,50 @@ fun RecentMapsDialog(
                             } else {
                                 Icons.Default.Map
                             }
-                            ListItem(
-                                leadingContent = {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable {
+                                        try {
+                                            onMapSelected(map.uriString)
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                R.string.error_opening_map,
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .padding(end = 6.dp)
+                                )
+                                Text(
+                                    text = formatMapName(map.name, maxChars = 100),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 4.dp)
+                                )
+                                IconButton(
+                                    onClick = { mapToDelete = map },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
                                     Icon(
-                                        imageVector = icon,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
+                                        imageVector = Icons.Outlined.Delete,
+                                        contentDescription = stringResource(R.string.delete_map_title),
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                },
-                                headlineContent = {
-                                    Text(
-                                        text = formatMapName(map.name),
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                },
-                                trailingContent = {
-                                    IconButton(onClick = { mapToDelete = map }) {
-                                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.delete_map_title))
-                                    }
-                                },
-                                modifier = Modifier.clickable {
-                                    try {
-                                        onMapSelected(map.uriString)
-                                    } catch (e: Exception) {
-                                        android.widget.Toast.makeText(
-                                            context,
-                                            R.string.error_opening_map,
-                                            android.widget.Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
                                 }
-                            )
+                            }
                         }
                     }
                 }
