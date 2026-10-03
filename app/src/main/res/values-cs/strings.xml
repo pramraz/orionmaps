@@ -2,6 +2,8 @@
     <string name="app_name">Orion Maps</string>
     <string name="open_pdf_map">Otevřít PDF mapu</string>
     <string name="open_kmz_map">Otevřít KMZ mapu</string>
+    <string name="open_demo_map">Otevřít demo mapu</string>
+    <string name="demo_maps">Demo mapy</string>
     <string name="recent_maps">Nedávné mapy</string>
     <string name="reset_map">Resetovat mapu</string>
     <string name="app_settings">Nastavení aplikace</string>

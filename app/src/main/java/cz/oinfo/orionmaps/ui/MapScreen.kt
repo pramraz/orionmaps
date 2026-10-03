@@ -410,6 +410,7 @@ fun InteractiveMap(
     }
 
     var showRecentMapsDialog by remember { mutableStateOf(false) }
+    var showDemoMapsDialog by remember { mutableStateOf(false) }
 
     var isReCentering by remember { mutableStateOf(false) }
     var recenterJob by remember { mutableStateOf<Job?>(null) }
@@ -864,6 +865,14 @@ fun InteractiveMap(
                         leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) }
                     )
                     DropdownMenuItem(
+                        text = { Text(stringResource(R.string.open_demo_map)) },
+                        onClick = {
+                            showDemoMapsDialog = true
+                            showSettingsMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Default.Explore, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.recent_maps)) },
                         onClick = {
                             showRecentMapsDialog = true
@@ -976,6 +985,16 @@ fun InteractiveMap(
                     showRecentMapsDialog = false
                 },
                 viewModel = viewModel
+            )
+        }
+
+        if (showDemoMapsDialog) {
+            DemoMapsDialog(
+                onDismiss = { showDemoMapsDialog = false },
+                onDemoMapSelected = { assetName ->
+                    viewModel.loadDemoMap(assetName)
+                    showDemoMapsDialog = false
+                }
             )
         }
 
@@ -1525,5 +1544,89 @@ fun RecentMapsDialog(
                 }
             }
         )
+    }
+}
+
+@Composable
+fun DemoMapsDialog(
+    onDismiss: () -> Unit,
+    onDemoMapSelected: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val demoMaps = remember {
+        try {
+            context.assets.list("")
+                ?.filter { it.endsWith(".kmz", ignoreCase = true) || it.endsWith(".pdf", ignoreCase = true) }
+                ?.sorted()
+                ?: listOf("demo-prehrada.kmz", "demo-prehrada.pdf")
+        } catch (e: Exception) {
+            listOf("demo-prehrada.kmz", "demo-prehrada.pdf")
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 16.dp, horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.demo_maps),
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 450.dp)
+                ) {
+                    items(demoMaps) { assetName ->
+                        val icon = if (assetName.endsWith(".pdf", ignoreCase = true)) {
+                            Icons.Default.PictureAsPdf
+                        } else {
+                            Icons.Default.Map
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable {
+                                    onDemoMapSelected(assetName)
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .padding(end = 6.dp)
+                            )
+                            Text(
+                                text = formatMapName(assetName, maxChars = 100),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        }
     }
 }

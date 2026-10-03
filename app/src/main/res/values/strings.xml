@@ -2,6 +2,8 @@
     <string name="app_name">Orion Maps</string>
     <string name="open_pdf_map">Open PDF map</string>
     <string name="open_kmz_map">Open KMZ map</string>
+    <string name="open_demo_map">Open demo map</string>
+    <string name="demo_maps">Demo maps</string>
     <string name="recent_maps">Recent maps</string>
     <string name="reset_map">Reset map</string>
     <string name="app_settings">App settings</string>

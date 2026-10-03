@@ -198,6 +198,51 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         }
     }
 
+    suspend fun copyAssetToInternalStorage(context: Context, assetName: String): File? = withContext(Dispatchers.IO) {
+        try {
+            val destFile = File(context.filesDir, assetName)
+            if (destFile.exists() && destFile.length() > 0) {
+                return@withContext destFile
+            }
+
+            context.assets.open(assetName).use { inputStream ->
+                destFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+
+            if (destFile.exists() && destFile.length() > 0) {
+                destFile
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    fun loadDemoMap(assetName: String) {
+        viewModelScope.launch {
+            _uiState.value = MapUiState.Loading
+            sharedPreferences.edit().putBoolean("is_loading_map", true).commit()
+
+            val localFile = copyAssetToInternalStorage(getApplication(), assetName)
+            if (localFile == null) {
+                sharedPreferences.edit().remove("is_loading_map").apply()
+                _uiState.value = MapUiState.Error("Failed to load demo map")
+                return@launch
+            }
+
+            val localUri = Uri.fromFile(localFile)
+            if (assetName.endsWith(".kmz", ignoreCase = true)) {
+                loadKmz(localUri)
+            } else {
+                loadPdf(localUri)
+            }
+        }
+    }
+
     fun loadPdf(uri: Uri) {
         viewModelScope.launch {
             try {
