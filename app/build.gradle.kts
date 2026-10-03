@@ -12,15 +12,24 @@ android {
         minSdk = 24
         targetSdk = 37
         versionCode = getGitCommitCount()
-        versionName = "1.2"
+        versionName = "1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            optimization {
-                enable = false
+            // 1. Zapne zmenšení, zrychlení a obfuskaci kódu (vyřeší první varování)
+            isMinifyEnabled = true
+            isShrinkResources = true // Odstraní nepoužité obrázky a ikony (zmenší appku)
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            // 2. Přibalí nativní ladicí symboly pro C/C++ knihovny (vyřeší druhé varování)
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
             }
         }
     }
