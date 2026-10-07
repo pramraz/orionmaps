@@ -344,7 +344,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                             var entry = zipInputStream.nextEntry
                             while (entry != null) {
                                 val normalizedName = entry.name.replace("\\", "/")
-                                if (overlays.any { it.href.contains(normalizedName) || normalizedName.contains(it.href) }) {
+                                if (overlays.any { overlay ->
+                                    val cleanHref = overlay.href.substringAfterLast("/")
+                                    val cleanEntry = normalizedName.substringAfterLast("/")
+                                    overlay.href.contains(normalizedName) || normalizedName.contains(overlay.href) || cleanHref.equals(cleanEntry, ignoreCase = true)
+                                }) {
                                     try {
                                         // REQUIREMENT 2: KMZ Image Downsampling
                                         val bytes = zipInputStream.readBytes()
@@ -421,8 +425,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
     private fun parseKmlGroundOverlays(kml: String): List<GroundOverlay> {
         val overlays = mutableListOf<GroundOverlay>()
-        val overlayRegex = "<GroundOverlay>([\\s\\S]*?)</GroundOverlay>".toRegex()
-        val hrefRegex = "<href>([\\s\\S]*?)</href>".toRegex()
+        val overlayRegex = "<GroundOverlay\\b[^>]*>([\\s\\S]*?)</GroundOverlay>".toRegex()
+        val hrefRegex = "<href\\b[^>]*>([\\s\\S]*?)</href>".toRegex()
         
         overlayRegex.findAll(kml).forEach { match ->
             val content = match.groupValues[1]
@@ -466,7 +470,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         // Since OCAD tiles might have different sizes or overlaps, we use geographic interpolation
         // but to keep it simple and high-res, we'll try to find a base resolution (pixels per degree)
         val firstOverlay = overlays.first()
-        val firstBmp = tileBitmaps.entries.find { firstOverlay.href.contains(it.key) || it.key.contains(firstOverlay.href) }?.value 
+        val firstBmp = tileBitmaps.entries.find { entry ->
+            val cleanHref = firstOverlay.href.substringAfterLast("/")
+            val cleanEntry = entry.key.substringAfterLast("/")
+            firstOverlay.href.contains(entry.key) || entry.key.contains(firstOverlay.href) || cleanHref.equals(cleanEntry, ignoreCase = true)
+        }?.value 
             ?: return null
             
         val pixelsPerLat = firstBmp.height / (firstOverlay.north - firstOverlay.south)
@@ -481,7 +489,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             canvas.drawColor(Color.WHITE)
 
             overlays.forEach { overlay ->
-                val bmp = tileBitmaps.entries.find { overlay.href.contains(it.key) || it.key.contains(overlay.href) }?.value
+                val bmp = tileBitmaps.entries.find { entry ->
+                    val cleanHref = overlay.href.substringAfterLast("/")
+                    val cleanEntry = entry.key.substringAfterLast("/")
+                    overlay.href.contains(entry.key) || entry.key.contains(overlay.href) || cleanHref.equals(cleanEntry, ignoreCase = true)
+                }?.value
                 if (bmp != null) {
                     val left = ((overlay.west - overallWest) * pixelsPerLon).toFloat()
                     val top = ((overallNorth - overlay.north) * pixelsPerLat).toFloat()
@@ -513,7 +525,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     }
 
     private fun extractCoord(kml: String, tag: String): Double? {
-        val regex = "<$tag>\\s*([-+]?[0-9]*\\.?[0-9]+)\\s*</$tag>".toRegex()
+        val regex = "<$tag\\b[^>]*>\\s*([-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\\s*</$tag>".toRegex()
         return regex.find(kml)?.groupValues?.get(1)?.toDoubleOrNull()
     }
 

@@ -91,4 +91,60 @@ class ExampleUnitTest {
         assertEquals("prilis-zlutoucky-kun_ob2026", sanitizeName("Příliš žluťoučký kůň_OB2026.pdf"))
         assertEquals("map", sanitizeName("!!!.kmz"))
     }
+
+    @Test
+    fun kmlGroundOverlayParsingTest() {
+        fun extractCoord(kml: String, tag: String): Double? {
+            val regex = "<$tag\\b[^>]*>\\s*([-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\\s*</$tag>".toRegex()
+            return regex.find(kml)?.groupValues?.get(1)?.toDoubleOrNull()
+        }
+
+        fun parseOverlays(kml: String): List<String> {
+            val overlays = mutableListOf<String>()
+            val overlayRegex = "<GroundOverlay\\b[^>]*>([\\s\\S]*?)</GroundOverlay>".toRegex()
+            val hrefRegex = "<href\\b[^>]*>([\\s\\S]*?)</href>".toRegex()
+
+            overlayRegex.findAll(kml).forEach { match ->
+                val content = match.groupValues[1]
+                val href = hrefRegex.find(content)?.groupValues?.get(1)?.trim()?.replace("\\", "/") ?: ""
+                val north = extractCoord(content, "north")
+                if (href.isNotEmpty() && north != null) {
+                    overlays.add("$href:$north")
+                }
+            }
+            return overlays
+        }
+
+        val ocadKml = """
+            <kml xmlns="http://www.opengis.net/kml/2.2">
+            <Folder>
+                <GroundOverlay>
+                    <name>tile_0_0.jpg</name>
+                    <Icon><href>files/tile_0_0.jpg</href></Icon>
+                    <LatLonBox><north>50.043578844</north></LatLonBox>
+                </GroundOverlay>
+            </Folder>
+            </kml>
+        """.trimIndent()
+
+        val ooMapperKml = """
+            <kml xmlns="http://www.opengis.net/kml/2.2">
+            <Folder>
+             <GroundOverlay id="tile_0_0.jpg">
+              <name>tile_0_0.jpg</name>
+              <Icon><href>files/tile_0_0.jpg</href></Icon>
+              <LatLonBox><north>50.05498943093903</north></LatLonBox>
+             </GroundOverlay>
+            </Folder>
+            </kml>
+        """.trimIndent()
+
+        val ocadParsed = parseOverlays(ocadKml)
+        assertEquals(1, ocadParsed.size)
+        assertEquals("files/tile_0_0.jpg:50.043578844", ocadParsed[0])
+
+        val ooMapperParsed = parseOverlays(ooMapperKml)
+        assertEquals(1, ooMapperParsed.size)
+        assertEquals("files/tile_0_0.jpg:50.05498943093903", ooMapperParsed[0])
+    }
 }
