@@ -75,6 +75,7 @@ fun MapScreen(
     val recentMaps by viewModel.recentMaps.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     var showRecentMapsDialog by remember { mutableStateOf(false) }
+    var showDemoMapsDialog by remember { mutableStateOf(false) }
     var showAppSettingsDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -213,6 +214,13 @@ fun MapScreen(
                                 Text(stringResource(R.string.recent_maps))
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { showDemoMapsDialog = true }
+                        ) {
+                            Text(stringResource(R.string.open_demo_map))
+                        }
                     }
 
                     // Version and Warning Info at Bottom
@@ -289,6 +297,12 @@ fun MapScreen(
                             Text(stringResource(R.string.recent_maps))
                         }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { showDemoMapsDialog = true }
+                    ) {
+                        Text(stringResource(R.string.open_demo_map))
+                    }
                 }
             }
         }
@@ -316,6 +330,16 @@ fun MapScreen(
                     showRecentMapsDialog = false
                 },
                 viewModel = viewModel
+            )
+        }
+
+        if (showDemoMapsDialog) {
+            DemoMapsDialog(
+                onDismiss = { showDemoMapsDialog = false },
+                onDemoMapSelected = { assetName ->
+                    viewModel.loadDemoMap(assetName)
+                    showDemoMapsDialog = false
+                }
             )
         }
 
