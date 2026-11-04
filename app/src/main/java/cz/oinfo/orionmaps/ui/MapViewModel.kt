@@ -48,7 +48,11 @@ enum class GpsMode {
 
 class MapViewModel(application: Application) : AndroidViewModel(application), SensorEventListener {
 
-    private val sharedPreferences = application.getSharedPreferences("recent_maps", Context.MODE_PRIVATE)
+    private val sharedPreferences = try {
+        application.getSharedPreferences("recent_maps", Context.MODE_PRIVATE)
+    } catch (e: Throwable) {
+        null
+    }
 
     private val _uiState = MutableStateFlow<MapUiState>(MapUiState.Empty)
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
@@ -56,10 +60,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     private val _recentMaps = MutableStateFlow<List<RecentMap>>(emptyList())
     val recentMaps = _recentMaps.asStateFlow()
 
-    private val _keepScreenOn = MutableStateFlow(sharedPreferences.getBoolean("keep_screen_on", true))
+    private val _keepScreenOn = MutableStateFlow(sharedPreferences?.getBoolean("keep_screen_on", true) ?: true)
     val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
 
-    private val _showOverLockScreen = MutableStateFlow(sharedPreferences.getBoolean("show_over_lock_screen", true))
+    private val _showOverLockScreen = MutableStateFlow(sharedPreferences?.getBoolean("show_over_lock_screen", true) ?: true)
     val showOverLockScreen: StateFlow<Boolean> = _showOverLockScreen.asStateFlow()
 
     private val _currentLocation = MutableStateFlow<Location?>(null)
@@ -74,7 +78,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     private val _compassBearing = MutableStateFlow(0f)
     val compassBearing: StateFlow<Float> = _compassBearing.asStateFlow()
 
-    private val _isRecordingEnabled = MutableStateFlow(sharedPreferences.getBoolean("recording_enabled", false))
+    private val _isRecordingEnabled = MutableStateFlow(sharedPreferences?.getBoolean("recording_enabled", false) ?: false)
     val isRecordingEnabled: StateFlow<Boolean> = _isRecordingEnabled.asStateFlow()
 
     private val _isRecording = MutableStateFlow(false)
@@ -152,8 +156,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         }
     }
 
-    private val sensorManager = application.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+    private val sensorManager = try { application.getSystemService(Context.SENSOR_SERVICE) as? SensorManager } catch (e: Throwable) { null }
+    private val rotationVectorSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
     private var smoothedSin = 0.0
     private var smoothedCos = 0.0
@@ -225,11 +229,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     fun loadDemoMap(assetName: String) {
         viewModelScope.launch {
             _uiState.value = MapUiState.Loading
-            sharedPreferences.edit().putBoolean("is_loading_map", true).commit()
+            sharedPreferences?.edit()?.putBoolean("is_loading_map", true)?.commit()
 
             val localFile = copyAssetToInternalStorage(getApplication(), assetName)
             if (localFile == null) {
-                sharedPreferences.edit().remove("is_loading_map").apply()
+                sharedPreferences?.edit()?.remove("is_loading_map")?.apply()
                 _uiState.value = MapUiState.Error("Failed to load demo map")
                 return@launch
             }
@@ -258,23 +262,28 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             _uiState.value = MapUiState.Loading
             
             // CRITICAL: Use .commit() to ensure the flag is written to disk IMMEDIATELY
-            sharedPreferences.edit().putBoolean("is_loading_map", true).commit()
+            sharedPreferences?.edit()?.putBoolean("is_loading_map", true)?.commit()
 
             val localFile = copyToInternalStorage(getApplication(), uri)
             if (localFile == null) {
-                sharedPreferences.edit().remove("is_loading_map").apply()
+                sharedPreferences?.edit()?.remove("is_loading_map")?.apply()
                 _uiState.value = MapUiState.Error("Failed to copy PDF to internal storage")
                 return@launch
             }
 
             val localUri = Uri.fromFile(localFile)
             val bitmap = renderPdfFirstPage(localUri)
+            val geo = withContext(Dispatchers.IO) { extractPdfGeoreference(localFile) }
             
             // Clear loading flag
-            sharedPreferences.edit().remove("is_loading_map").apply()
+            sharedPreferences?.edit()?.remove("is_loading_map")?.apply()
 
             if (bitmap != null) {
-                _uiState.value = MapUiState.Success(bitmap)
+                _uiState.value = MapUiState.Success(bitmap, geo)
+                if (geo != null) {
+                    _gpsMode.value = GpsMode.FREE
+                    _isTrackingSuspended.value = false
+                }
                 addRecentMap(localUri)
             } else {
                 if (_uiState.value !is MapUiState.Error) {
@@ -298,7 +307,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             _uiState.value = MapUiState.Loading
 
             // CRITICAL: Use .commit() to ensure the flag is written to disk IMMEDIATELY
-            sharedPreferences.edit().putBoolean("is_loading_map", true).commit()
+            sharedPreferences?.edit()?.putBoolean("is_loading_map", true)?.commit()
             
             withContext(Dispatchers.IO) {
                 try {
@@ -408,7 +417,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                     _uiState.value = MapUiState.Error("Failed to load KMZ: ${e.message}")
                 } finally {
                     // Clear loading flag
-                    sharedPreferences.edit().remove("is_loading_map").apply()
+                    sharedPreferences?.edit()?.remove("is_loading_map")?.apply()
                 }
             }
         }
@@ -576,7 +585,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             jsonObject.put("name", it.name)
             jsonArray.put(jsonObject)
         }
-        sharedPreferences.edit().putString("maps_json", jsonArray.toString()).apply()
+        sharedPreferences?.edit()?.putString("maps_json", jsonArray.toString())?.apply()
     }
 
     private fun loadRecentMaps() {
@@ -655,17 +664,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             }
         }
         _recentMaps.value = emptyList()
-        sharedPreferences.edit().remove("maps_json").apply()
+        sharedPreferences?.edit()?.remove("maps_json")?.apply()
     }
 
     fun setKeepScreenOn(enabled: Boolean) {
         _keepScreenOn.value = enabled
-        sharedPreferences.edit().putBoolean("keep_screen_on", enabled).apply()
+        sharedPreferences?.edit()?.putBoolean("keep_screen_on", enabled)?.apply()
     }
 
     fun setShowOverLockScreen(enabled: Boolean) {
         _showOverLockScreen.value = enabled
-        sharedPreferences.edit().putBoolean("show_over_lock_screen", enabled).apply()
+        sharedPreferences?.edit()?.putBoolean("show_over_lock_screen", enabled)?.apply()
     }
 
     fun clearMap() {
@@ -689,7 +698,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         }
 
         rotationVectorSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
         }
     }
 
@@ -698,7 +707,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
         fusedLocationProviderClient = null
         _currentLocation.value = null
-        sensorManager.unregisterListener(this)
+        sensorManager?.unregisterListener(this)
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -739,7 +748,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun setRecordingEnabled(enabled: Boolean) {
         _isRecordingEnabled.value = enabled
-        sharedPreferences.edit().putBoolean("recording_enabled", enabled).apply()
+        sharedPreferences?.edit()?.putBoolean("recording_enabled", enabled)?.apply()
     }
 
     fun startRecording() {
@@ -938,6 +947,231 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             e.printStackTrace()
         }
         null
+    }
+
+    private fun extractPdfGeoreference(file: File): MapGeoreference? {
+        return try {
+            val fileBytes = file.readBytes()
+            var text = String(fileBytes, Charsets.ISO_8859_1)
+
+            if (!text.contains("/GPTS")) {
+                val decompressedBuilder = StringBuilder(text)
+                var searchIdx = 0
+                val streamToken = "stream"
+                val endStreamToken = "endstream"
+                while (searchIdx < fileBytes.size) {
+                    val streamPos = text.indexOf(streamToken, searchIdx)
+                    if (streamPos == -1) break
+
+                    var dataStart = streamPos + streamToken.length
+                    if (dataStart < fileBytes.size && fileBytes[dataStart] == '\r'.code.toByte()) dataStart++
+                    if (dataStart < fileBytes.size && fileBytes[dataStart] == '\n'.code.toByte()) dataStart++
+
+                    val endStreamPos = text.indexOf(endStreamToken, dataStart)
+                    if (endStreamPos == -1) break
+
+                    var dataEnd = endStreamPos
+                    if (dataEnd > dataStart && fileBytes[dataEnd - 1] == '\n'.code.toByte()) dataEnd--
+                    if (dataEnd > dataStart && fileBytes[dataEnd - 1] == '\r'.code.toByte()) dataEnd--
+
+                    if (dataEnd > dataStart) {
+                        val compressedBytes = fileBytes.copyOfRange(dataStart, dataEnd)
+                        val decompressed = decompressFlateStream(compressedBytes)
+                        if (decompressed != null) {
+                            decompressedBuilder.append("\n").append(decompressed)
+                        }
+                    }
+
+                    searchIdx = endStreamPos + endStreamToken.length
+                }
+                text = decompressedBuilder.toString()
+            }
+
+            val mediaBoxRegex = "/MediaBox\\s*\\[\\s*([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s*\\]".toRegex()
+            val mediaMatch = mediaBoxRegex.find(text) ?: return null
+            val m0 = mediaMatch.groupValues[1].toDoubleOrNull() ?: return null
+            val m1 = mediaMatch.groupValues[2].toDoubleOrNull() ?: return null
+            val m2 = mediaMatch.groupValues[3].toDoubleOrNull() ?: return null
+            val m3 = mediaMatch.groupValues[4].toDoubleOrNull() ?: return null
+
+            val mediaX0 = minOf(m0, m2)
+            val mediaX1 = maxOf(m0, m2)
+            val mediaY0 = minOf(m1, m3)
+            val mediaY1 = maxOf(m1, m3)
+
+            if (mediaX1 <= mediaX0 || mediaY1 <= mediaY0) return null
+
+            val bboxRegex = "/BBox\\s*\\[\\s*([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s*\\]".toRegex()
+            val bboxMatch = bboxRegex.find(text)
+            val bxMin: Double
+            val bxMax: Double
+            val byMin: Double
+            val byMax: Double
+
+            if (bboxMatch != null) {
+                val b0 = bboxMatch.groupValues[1].toDoubleOrNull()
+                val b1 = bboxMatch.groupValues[2].toDoubleOrNull()
+                val b2 = bboxMatch.groupValues[3].toDoubleOrNull()
+                val b3 = bboxMatch.groupValues[4].toDoubleOrNull()
+                if (b0 != null && b1 != null && b2 != null && b3 != null) {
+                    bxMin = minOf(b0, b2)
+                    bxMax = maxOf(b0, b2)
+                    byMin = minOf(b1, b3)
+                    byMax = maxOf(b1, b3)
+                } else {
+                    bxMin = mediaX0
+                    bxMax = mediaX1
+                    byMin = mediaY0
+                    byMax = mediaY1
+                }
+            } else {
+                bxMin = mediaX0
+                bxMax = mediaX1
+                byMin = mediaY0
+                byMax = mediaY1
+            }
+
+            val gptsRegex = "/GPTS\\s*\\[\\s*([-\\d.eE+\\s]+)\\s*\\]".toRegex()
+            val gptsMatch = gptsRegex.find(text) ?: return null
+            val gpts = gptsMatch.groupValues[1].trim().split("\\s+".toRegex()).mapNotNull { it.toDoubleOrNull() }
+            if (gpts.size < 8) return null
+
+            val lptsRegex = "/LPTS\\s*\\[\\s*([-\\d.eE+\\s]+)\\s*\\]".toRegex()
+            val lptsMatch = lptsRegex.find(text)
+            val lpts = if (lptsMatch != null) {
+                val parsed = lptsMatch.groupValues[1].trim().split("\\s+".toRegex()).mapNotNull { it.toDoubleOrNull() }
+                if (parsed.size >= 8) parsed else listOf(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0)
+            } else {
+                listOf(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0)
+            }
+
+            val uArr = DoubleArray(4)
+            val vArr = DoubleArray(4)
+            val latArr = DoubleArray(4)
+            val lonArr = DoubleArray(4)
+
+            for (i in 0..3) {
+                val lx = lpts[2 * i]
+                val ly = lpts[2 * i + 1]
+                val px = bxMin + lx * (bxMax - bxMin)
+                val py = byMin + ly * (byMax - byMin)
+                uArr[i] = (px - mediaX0) / (mediaX1 - mediaX0)
+                vArr[i] = (mediaY1 - py) / (mediaY1 - mediaY0)
+                latArr[i] = gpts[2 * i]
+                lonArr[i] = gpts[2 * i + 1]
+            }
+
+            fun fitLinear(y: DoubleArray): DoubleArray? {
+                var su = 0.0
+                var sv = 0.0
+                var suu = 0.0
+                var svv = 0.0
+                var suv = 0.0
+                var sy = 0.0
+                var suy = 0.0
+                var svy = 0.0
+                val n = 4.0
+
+                for (i in 0..3) {
+                    val u = uArr[i]
+                    val v = vArr[i]
+                    val yi = y[i]
+                    su += u
+                    sv += v
+                    suu += u * u
+                    svv += v * v
+                    suv += u * v
+                    sy += yi
+                    suy += u * yi
+                    svy += v * yi
+                }
+
+                val m00 = n
+                val m01 = su
+                val m02 = sv
+                val m10 = su
+                val m11 = suu
+                val m12 = suv
+                val m20 = sv
+                val m21 = suv
+                val m22 = svv
+
+                val c00 = m11 * m22 - m12 * m21
+                val c01 = m12 * m20 - m10 * m22
+                val c02 = m10 * m21 - m11 * m20
+
+                val c10 = m21 * m02 - m01 * m22
+                val c11 = m00 * m22 - m02 * m20
+                val c12 = m02 * m10 - m00 * m21
+
+                val c20 = m01 * m12 - m02 * m11
+                val c21 = m02 * m10 - m00 * m12
+                val c22 = m00 * m11 - m01 * m10
+
+                val det = m00 * c00 + m01 * c01 + m02 * c02
+                if (kotlin.math.abs(det) < 1e-12) return null
+
+                val beta0 = (c00 * sy + c10 * suy + c20 * svy) / det
+                val beta1 = (c01 * sy + c11 * suy + c21 * svy) / det
+                val beta2 = (c02 * sy + c12 * suy + c22 * svy) / det
+
+                return doubleArrayOf(beta0, beta1, beta2)
+            }
+
+            val latCoeffs = fitLinear(latArr) ?: return null
+            val lonCoeffs = fitLinear(lonArr) ?: return null
+
+            val lat0 = latCoeffs[0]
+            val dLat_du = latCoeffs[1]
+            val dLat_dv = latCoeffs[2]
+
+            val lon0 = lonCoeffs[0]
+            val dLon_du = lonCoeffs[1]
+            val dLon_dv = lonCoeffs[2]
+
+            val midLat = lat0 + dLat_du * 0.5 + dLat_dv * 0.5
+            val midLon = lon0 + dLon_du * 0.5 + dLon_dv * 0.5
+
+            val aspect = kotlin.math.cos(Math.toRadians(midLat))
+
+            val dLonAdj = dLon_du * aspect
+            val dLat = dLat_du
+            val rotation = Math.toDegrees(kotlin.math.atan2(dLat, dLonAdj))
+
+            val spanLon = kotlin.math.hypot(dLon_du * aspect, dLat_du) / aspect
+            val spanLat = kotlin.math.hypot(dLon_dv * aspect, dLat_dv)
+
+            val north = midLat + spanLat / 2.0
+            val south = midLat - spanLat / 2.0
+            val east = midLon + spanLon / 2.0
+            val west = midLon - spanLon / 2.0
+
+            MapGeoreference(north, south, east, west, rotation)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun decompressFlateStream(bytes: ByteArray): String? {
+        val inflater = java.util.zip.Inflater()
+        inflater.setInput(bytes)
+        val outputStream = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(4096)
+        return try {
+            while (!inflater.finished()) {
+                val count = inflater.inflate(buffer)
+                if (count == 0) {
+                    if (inflater.needsInput() || inflater.needsDictionary()) break
+                }
+                outputStream.write(buffer, 0, count)
+            }
+            inflater.end()
+            outputStream.toByteArray().toString(Charsets.ISO_8859_1)
+        } catch (e: Exception) {
+            inflater.end()
+            null
+        }
     }
 }
 

@@ -147,4 +147,91 @@ class ExampleUnitTest {
         assertEquals(1, ooMapperParsed.size)
         assertEquals("files/tile_0_0.jpg:50.05498943093903", ooMapperParsed[0])
     }
+
+    @Test
+    fun pdfGeoreferenceExtractionTest() {
+        val pdfContent = """
+            %PDF-1.4
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [ 0 0 595.28 841.89 ] /VP [ << /Subtype /GEO /BBox [ 0 0 595.28 841.89 ] /GPTS [ 49.0 14.0 50.0 14.0 50.0 15.0 49.0 15.0 ] /LPTS [ 0 0 0 1 1 1 1 0 ] >> ] >>
+            endobj
+            xref
+            0 4
+            0000000000 65535 f 
+            0000000009 00000 n 
+            0000000058 00000 n 
+            0000000115 00000 n 
+            trailer
+            << /Size 4 /Root 1 0 R >>
+            startxref
+            300
+            %%EOF
+        """.trimIndent()
+
+        val tempFile = java.io.File.createTempFile("geopdf_test", ".pdf")
+        try {
+            tempFile.writeBytes(pdfContent.toByteArray(Charsets.ISO_8859_1))
+
+            val dummyViewModel = cz.oinfo.orionmaps.ui.MapViewModel(android.app.Application())
+            val method = cz.oinfo.orionmaps.ui.MapViewModel::class.java.getDeclaredMethod("extractPdfGeoreference", java.io.File::class.java)
+            method.isAccessible = true
+
+            val geo = method.invoke(dummyViewModel, tempFile) as cz.oinfo.orionmaps.ui.MapGeoreference?
+            assertNotNull(geo)
+
+            assertEquals(50.0, geo!!.north, 1e-4)
+            assertEquals(49.0, geo.south, 1e-4)
+            assertEquals(15.0, geo.east, 1e-4)
+            assertEquals(14.0, geo.west, 1e-4)
+            assertEquals(0.0, geo.rotation, 1e-4)
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    @Test
+    fun pdfGeoreferenceFlateDecodeTest() {
+        val vpBlock = "/VP [ << /Subtype /GEO /BBox [ 0 0 100 200 ] /GPTS [ 49.0 14.0 50.0 14.0 50.0 15.0 49.0 15.0 ] /LPTS [ 0 0 0 1 1 1 1 0 ] >> ]"
+        val deflater = java.util.zip.Deflater()
+        deflater.setInput(vpBlock.toByteArray(Charsets.ISO_8859_1))
+        deflater.finish()
+        val baos = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(1024)
+        while (!deflater.finished()) {
+            val count = deflater.deflate(buf)
+            baos.write(buf, 0, count)
+        }
+        deflater.end()
+        val compressedBytes = baos.toByteArray()
+
+        val pdfHeader = "%PDF-1.4\n/MediaBox [ 0 0 100 200 ]\n/Filter /FlateDecode\nstream\r\n"
+        val pdfFooter = "\r\nendstream\n%%EOF"
+
+        val pdfFileBytes = pdfHeader.toByteArray(Charsets.ISO_8859_1) + compressedBytes + pdfFooter.toByteArray(Charsets.ISO_8859_1)
+
+        val tempFile = java.io.File.createTempFile("geopdf_flate_test", ".pdf")
+        try {
+            tempFile.writeBytes(pdfFileBytes)
+
+            val dummyViewModel = cz.oinfo.orionmaps.ui.MapViewModel(android.app.Application())
+            val method = cz.oinfo.orionmaps.ui.MapViewModel::class.java.getDeclaredMethod("extractPdfGeoreference", java.io.File::class.java)
+            method.isAccessible = true
+
+            val geo = method.invoke(dummyViewModel, tempFile) as cz.oinfo.orionmaps.ui.MapGeoreference?
+            assertNotNull(geo)
+
+            assertEquals(50.0, geo!!.north, 1e-4)
+            assertEquals(49.0, geo.south, 1e-4)
+            assertEquals(15.0, geo.east, 1e-4)
+            assertEquals(14.0, geo.west, 1e-4)
+        } finally {
+            tempFile.delete()
+        }
+    }
 }
