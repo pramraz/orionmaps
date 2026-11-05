@@ -11,22 +11,36 @@ android {
         applicationId = "cz.oinfo.orionmaps"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = getGitCommitCount()
+        versionName = "1.5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            optimization {
-                enable = false
+            // 1. Zapne zmenšení, zrychlení a obfuskaci kódu (vyřeší první varování)
+            isMinifyEnabled = true
+            isShrinkResources = true // Odstraní nepoužité obrázky a ikony (zmenší appku)
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            // 2. Přibalí nativní ladicí symboly pro C/C++ knihovny (vyřeší druhé varování)
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
             }
         }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
     }
     buildFeatures {
         compose = true
@@ -52,4 +66,11 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+fun getGitCommitCount(): Int {
+    return providers.exec {
+        commandLine("git", "rev-list", "--count", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim().toIntOrNull() ?: 42 }.getOrElse(42)
 }
