@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import cz.oinfo.orionmaps.TrackRecordingService
+import cz.oinfo.orionmaps.TrackRepository
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.zip.ZipInputStream
@@ -81,16 +83,20 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     private val _isRecordingEnabled = MutableStateFlow(sharedPreferences?.getBoolean("recording_enabled", false) ?: false)
     val isRecordingEnabled: StateFlow<Boolean> = _isRecordingEnabled.asStateFlow()
 
-    private val _isRecording = MutableStateFlow(false)
-    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+    init {
+        TrackRepository.init(application)
+    }
+
+    // Recording state and the track itself live in TrackRepository, so they survive
+    // Activity/ViewModel recreation while TrackRecordingService records in the background.
+    val isRecording: StateFlow<Boolean> = TrackRepository.isRecording
 
     private val _showRecordedTrack = MutableStateFlow(true)
     val showRecordedTrack: StateFlow<Boolean> = _showRecordedTrack.asStateFlow()
 
-    private val _recordedTrack = MutableStateFlow<List<Location>>(emptyList())
-    val recordedTrack: StateFlow<List<Location>> = _recordedTrack.asStateFlow()
+    val recordedTrack: StateFlow<List<Location>> = TrackRepository.track
 
-    val hasRecordedData: StateFlow<Boolean> = _recordedTrack
+    val hasRecordedData: StateFlow<Boolean> = TrackRepository.track
         .map { it.isNotEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -129,8 +135,34 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     }
 
     private fun isLocationOutside(loc: Location, geo: MapGeoreference): Boolean {
-        return loc.latitude > geo.north || loc.latitude < geo.south ||
-                loc.longitude > geo.east || loc.longitude < geo.west
+        return !isPointInsideMap(loc.latitude, loc.longitude, geo)
+    }
+
+    /**
+     * Tests whether a point lies inside the (possibly rotated) map overlay.
+     * The overlay is the LatLonBox rotated counter-clockwise by [MapGeoreference.rotation]
+     * degrees around its center (KML GroundOverlay convention).
+     */
+    private fun isPointInsideMap(lat: Double, lon: Double, geo: MapGeoreference): Boolean {
+        val centerLat = (geo.north + geo.south) / 2.0
+        val centerLon = (geo.east + geo.west) / 2.0
+        val cosLat = kotlin.math.cos(Math.toRadians(centerLat))
+
+        // Local planar offsets in "latitude degrees" units (longitude scaled by cos(lat))
+        val x = (lon - centerLon) * cosLat
+        val y = lat - centerLat
+
+        // Rotate the point clockwise by the overlay rotation into the overlay's own frame
+        val theta = Math.toRadians(geo.rotation)
+        val cosT = kotlin.math.cos(theta)
+        val sinT = kotlin.math.sin(theta)
+        val xr = x * cosT + y * sinT
+        val yr = -x * sinT + y * cosT
+
+        val halfWidth = (geo.east - geo.west) / 2.0 * cosLat
+        val halfHeight = (geo.north - geo.south) / 2.0
+        val eps = 1e-9
+        return kotlin.math.abs(xr) <= halfWidth + eps && kotlin.math.abs(yr) <= halfHeight + eps
     }
 
     fun formatDistance(distance: Float): String {
@@ -141,18 +173,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         }
     }
 
-    private val _isTrackSaved = MutableStateFlow(true)
-    val isTrackSaved: StateFlow<Boolean> = _isTrackSaved.asStateFlow()
+    val isTrackSaved: StateFlow<Boolean> = TrackRepository.isTrackSaved
 
     private var fusedLocationProviderClient: FusedLocationProviderClient? = null
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            val location = result.lastLocation
-            _currentLocation.value = location
-            
-            if (_isRecording.value && location != null) {
-                _recordedTrack.value = _recordedTrack.value + location
-            }
+            // Only for displaying the position. Track points are recorded by TrackRecordingService.
+            _currentLocation.value = result.lastLocation
         }
     }
 
@@ -260,7 +287,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             }
 
             _uiState.value = MapUiState.Loading
-            
+
             // CRITICAL: Use .commit() to ensure the flag is written to disk IMMEDIATELY
             sharedPreferences?.edit()?.putBoolean("is_loading_map", true)?.commit()
 
@@ -274,7 +301,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             val localUri = Uri.fromFile(localFile)
             val bitmap = renderPdfFirstPage(localUri)
             val geo = withContext(Dispatchers.IO) { extractPdfGeoreference(localFile) }
-            
+
             // Clear loading flag
             sharedPreferences?.edit()?.remove("is_loading_map")?.apply()
 
@@ -308,7 +335,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
             // CRITICAL: Use .commit() to ensure the flag is written to disk IMMEDIATELY
             sharedPreferences?.edit()?.putBoolean("is_loading_map", true)?.commit()
-            
+
             withContext(Dispatchers.IO) {
                 try {
                     val localFile = copyToInternalStorage(getApplication(), uri)
@@ -319,7 +346,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
                     val localUri = Uri.fromFile(localFile)
                     val contentResolver = getApplication<Application>().contentResolver
-                    
+
                     // First pass: Find KML and parse tile structure
                     var kmlContent: String? = null
                     contentResolver.openInputStream(localUri)?.use { inputStream ->
@@ -361,12 +388,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                                     try {
                                         // REQUIREMENT 2: KMZ Image Downsampling
                                         val bytes = zipInputStream.readBytes()
-                                        
+
                                         val options = BitmapFactory.Options().apply {
                                             inJustDecodeBounds = true
                                         }
                                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                                        
+
                                         val MAX_TILE_DIMENSION = 4096
                                         var inSampleSize = 1
                                         if (options.outHeight > MAX_TILE_DIMENSION || options.outWidth > MAX_TILE_DIMENSION) {
@@ -376,10 +403,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                                                 inSampleSize *= 2
                                             }
                                         }
-                                        
+
                                         options.inJustDecodeBounds = false
                                         options.inSampleSize = inSampleSize
-                                        
+
                                         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
                                         if (bmp != null) {
                                             tileBitmaps[normalizedName] = bmp
@@ -436,7 +463,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         val overlays = mutableListOf<GroundOverlay>()
         val overlayRegex = "<GroundOverlay\\b[^>]*>([\\s\\S]*?)</GroundOverlay>".toRegex()
         val hrefRegex = "<href\\b[^>]*>([\\s\\S]*?)</href>".toRegex()
-        
+
         overlayRegex.findAll(kml).forEach { match ->
             val content = match.groupValues[1]
             val href = hrefRegex.find(content)?.groupValues?.get(1)?.trim()?.replace("\\", "/") ?: ""
@@ -471,7 +498,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         val overallSouth = minSouth
         val overallEast = maxEast
         val overallWest = minWest
-        
+
         // Use rotation from first overlay (assuming all have same/similar rotation for stitching)
         val rotation = overlays.first().rotation
 
@@ -485,7 +512,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             firstOverlay.href.contains(entry.key) || entry.key.contains(firstOverlay.href) || cleanHref.equals(cleanEntry, ignoreCase = true)
         }?.value 
             ?: return null
-            
+
         val pixelsPerLat = firstBmp.height / (firstOverlay.north - firstOverlay.south)
         val pixelsPerLon = firstBmp.width / (firstOverlay.east - firstOverlay.west)
 
@@ -599,7 +626,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                     maps.add(RecentMap(obj.getString("uri"), obj.getString("name")))
                 }
                 _recentMaps.value = maps
-                
+
                 // Requirement: Open last opened map is now manual via UI
                 // Safety: Check if previous load crashed - CRITICAL: use .commit() to clear it
                 if (sharedPreferences?.getBoolean("is_loading_map", false) == true) {
@@ -716,13 +743,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
             val orientation = FloatArray(3)
             SensorManager.getOrientation(rotationMatrix, orientation)
-            
+
             val rawAzimuthRadians = orientation[0].toDouble()
-            
+
             // Exponential Moving Average on vector components to handle 360/0 wrap-around
             smoothedSin = ALPHA * kotlin.math.sin(rawAzimuthRadians) + (1 - ALPHA) * smoothedSin
             smoothedCos = ALPHA * kotlin.math.cos(rawAzimuthRadians) + (1 - ALPHA) * smoothedCos
-            
+
             val smoothedBearing = Math.toDegrees(kotlin.math.atan2(smoothedSin, smoothedCos)).toFloat()
             _compassBearing.value = (smoothedBearing + 360f) % 360f
         }
@@ -751,13 +778,27 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         sharedPreferences?.edit()?.putBoolean("recording_enabled", enabled)?.apply()
     }
 
-    fun startRecording() {
-        _isRecording.value = true
-        _isTrackSaved.value = false
+    /**
+     * Starts (or resumes) recording in the foreground service. New points are appended
+     * to the existing track. Returns false if recording could not be started.
+     */
+    fun startRecording(): Boolean {
+        val app = getApplication<Application>()
+        if (!TrackRecordingService.hasLocationPermission(app)) return false
+        TrackRepository.setRecording(true)
+        return try {
+            TrackRecordingService.start(app)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            TrackRepository.setRecording(false)
+            false
+        }
     }
 
+    /** The service observes the flag and stops itself. */
     fun stopRecording() {
-        _isRecording.value = false
+        TrackRepository.setRecording(false)
     }
 
     fun setShowRecordedTrack(show: Boolean) {
@@ -765,11 +806,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
     }
 
     fun clearRecordedTrack() {
-        _recordedTrack.value = emptyList()
+        TrackRepository.clear()
     }
 
     fun clearTrack() {
-        _recordedTrack.value = emptyList()
+        TrackRepository.clear()
     }
 
     enum class GpxImportResult {
@@ -783,7 +824,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             try {
                 val inputStream = getApplication<Application>().contentResolver.openInputStream(uri)
                 val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
-                
+
                 // Extract track points using Regex to find <trkpt lat="..." lon="...">
                 val latLonRegex = "<trkpt\\s+lat=\"([-+]?[0-9]*\\.?[0-9]+)\"\\s+lon=\"([-+]?[0-9]*\\.?[0-9]+)\"".toRegex()
                 val parsedList = latLonRegex.findAll(content).map { match ->
@@ -807,10 +848,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
 
                 if (geo != null) {
                     val hasPointInside = parsedList.any { loc ->
-                        loc.latitude <= geo.north &&
-                        loc.latitude >= geo.south &&
-                        loc.longitude <= geo.east &&
-                        loc.longitude >= geo.west
+                        isPointInsideMap(loc.latitude, loc.longitude, geo)
                     }
 
                     if (!hasPointInside) {
@@ -822,9 +860,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                 }
 
                 withContext(Dispatchers.Main) {
-                    _recordedTrack.value = parsedList
+                    TrackRepository.replaceTrack(parsedList, saved = true)
                     _showRecordedTrack.value = true
-                    _isTrackSaved.value = true
                     onResult?.invoke(GpxImportResult.SUCCESS)
                 }
             } catch (e: Exception) {
@@ -836,11 +873,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         }
     }
 
+    /** Call only after the GPX file has been successfully written. */
+    fun markTrackSaved() {
+        TrackRepository.markSaved()
+    }
+
     fun exportTrackToGpxString(): String {
-        val track = _recordedTrack.value
+        val track = TrackRepository.track.value
         if (track.isEmpty()) return ""
-        
-        _isTrackSaved.value = true
 
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
@@ -848,10 +888,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         sb.append("  <trk>\n")
         sb.append("    <name>Orion Track</name>\n")
         sb.append("    <trkseg>\n")
-        
+
         val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
         dateFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
-        
+
         track.forEach { loc ->
             sb.append("      <trkpt lat=\"${loc.latitude}\" lon=\"${loc.longitude}\">\n")
             sb.append("        <ele>${loc.altitude}</ele>\n")
@@ -862,17 +902,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
         sb.append("    </trkseg>\n")
         sb.append("  </trk>\n")
         sb.append("</gpx>")
-        
+
         return sb.toString()
     }
 
     fun getSuggestedGpxFilename(): String {
         val currentMapName = _recentMaps.value.firstOrNull()?.name ?: "map"
         val stem = currentMapName.substringBeforeLast('.', currentMapName)
-        
+
         val normalized = java.text.Normalizer.normalize(stem, java.text.Normalizer.Form.NFD)
             .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
-        
+
         val sanitized = normalized
             .trim()
             .lowercase(java.util.Locale.US)
@@ -922,7 +962,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
                             // REQUIREMENT 1: Dynamic PDF Scaling
                             val MAX_DIMENSION = 4096f
                             val scale = minOf(MAX_DIMENSION / page.width, MAX_DIMENSION / page.height)
-                            
+
                             val width = (page.width * scale).toInt()
                             val height = (page.height * scale).toInt()
 
@@ -1002,7 +1042,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             if (mediaX1 <= mediaX0 || mediaY1 <= mediaY0) return null
 
             val bboxRegex = "/BBox\\s*\\[\\s*([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s+([-\\d.eE+]+)\\s*\\]".toRegex()
-            val bboxMatch = bboxRegex.find(text)
+            // The georeferenced Viewport (/VP) carries its own /BBox. The file usually contains
+            // many other /BBox entries (patterns, form XObjects), so the search must be limited
+            // to the /VP block - i.e. between "/VP" and its "/GPTS". Otherwise e.g. a 27x27 pt
+            // pattern BBox gets picked up and the whole map is scaled ~30x and shifted.
+            val vpIdx = text.indexOf("/VP")
+            val vpGptsIdx = if (vpIdx >= 0) text.indexOf("/GPTS", vpIdx) else -1
+            val bboxMatch = if (vpIdx >= 0 && vpGptsIdx > vpIdx) {
+                bboxRegex.find(text.substring(vpIdx, vpGptsIdx))
+            } else null
             val bxMin: Double
             val bxMax: Double
             val byMin: Double
@@ -1032,12 +1080,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application), Se
             }
 
             val gptsRegex = "/GPTS\\s*\\[\\s*([-\\d.eE+\\s]+)\\s*\\]".toRegex()
-            val gptsMatch = gptsRegex.find(text) ?: return null
+            val gptsMatch = gptsRegex.find(text, maxOf(vpIdx, 0)) ?: return null
             val gpts = gptsMatch.groupValues[1].trim().split("\\s+".toRegex()).mapNotNull { it.toDoubleOrNull() }
             if (gpts.size < 8) return null
 
             val lptsRegex = "/LPTS\\s*\\[\\s*([-\\d.eE+\\s]+)\\s*\\]".toRegex()
-            val lptsMatch = lptsRegex.find(text)
+            val lptsMatch = lptsRegex.find(text, maxOf(vpIdx, 0))
             val lpts = if (lptsMatch != null) {
                 val parsed = lptsMatch.groupValues[1].trim().split("\\s+".toRegex()).mapNotNull { it.toDoubleOrNull() }
                 if (parsed.size >= 8) parsed else listOf(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0)

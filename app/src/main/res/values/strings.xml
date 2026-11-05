@@ -49,4 +49,14 @@
     <string name="toggle_gesture_mode">Toggle Gesture Mode</string>
     <string name="version_label">Version: %1$s (build %2$d)</string>
     <string name="usage_warning">The application is intended for training and educational purposes, do not use it if it is prohibited at a sports event (e.g. orienteering races).</string>
+
+    <!-- Track recording dialog & notification -->
+    <string name="recording_stopped_title">Recording stopped</string>
+    <string name="recording_stopped_message">Save the track now? If you will continue, save it later.</string>
+    <string name="save_now">Save now</string>
+    <string name="save_later">Later</string>
+    <string name="recording_channel_name">Track recording</string>
+    <string name="recording_notification_title">Recording track</string>
+    <string name="recording_notification_text">Tap to open the map</string>
+    <string name="recording_notification_stop">Stop</string>
 </resources>

@@ -49,4 +49,14 @@
     <string name="toggle_gesture_mode">Přepnout režim gest</string>
     <string name="version_label">Verze: %1$s (build %2$d)</string>
     <string name="usage_warning">Aplikace je určena pro tréninkové a výukové účely, nepoužívejte ji, pokud je to na sportovní akci zakázáno (např. OB závody).</string>
+
+    <!-- Dialog po zastavení nahrávání a notifikace -->
+    <string name="recording_stopped_title">Nahrávání zastaveno</string>
+    <string name="recording_stopped_message">Chceš trasu uložit teď? Pokud budeš pokračovat, ulož ji později.</string>
+    <string name="save_now">Uložit teď</string>
+    <string name="save_later">Později</string>
+    <string name="recording_channel_name">Nahrávání trasy</string>
+    <string name="recording_notification_title">Nahrávám trasu</string>
+    <string name="recording_notification_text">Klepnutím otevřeš mapu</string>
+    <string name="recording_notification_stop">Zastavit</string>
 </resources>

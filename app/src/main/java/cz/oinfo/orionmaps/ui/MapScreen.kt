@@ -105,6 +105,7 @@ fun MapScreen(
 
     LaunchedEffect(uiState, gpsMode) {
         val state = uiState
+        // Track recording does not depend on this: TrackRecordingService has its own location updates
         if (state is MapUiState.Success && state.georeference != null && gpsMode != GpsMode.HIDDEN) {
             val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
@@ -394,12 +395,15 @@ fun InteractiveMap(
         uri?.let {
             val gpxString = viewModel.exportTrackToGpxString()
             try {
-                context.contentResolver.openOutputStream(it)?.use { output ->
-                    output.write(gpxString.toByteArray())
-                }
+                val output = context.contentResolver.openOutputStream(it)
+                    ?: throw java.io.IOException("Cannot open output stream")
+                output.use { stream -> stream.write(gpxString.toByteArray()) }
+                // Only now is the track really saved
+                viewModel.markTrackSaved()
                 viewModel.clearRecordedTrack()
                 triggerNotification(trackSavedMsg)
             } catch (e: Exception) {
+                // Track stays in memory and stays marked as unsaved
                 triggerNotification(trackErrorMsg)
             }
         }
@@ -462,12 +466,37 @@ fun InteractiveMap(
         baseDotY = 0f
     }
 
+    // Screen point the map rotates around when it is NOT anchored to the GPS position
+    // (no fix yet, user outside the map). Same point where the GPS dot is kept otherwise.
+    val rotationAnchor = Offset(
+        containerSize.width / 2f,
+        if (gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY) containerSize.height * 0.7f else containerSize.height * 0.5f
+    )
+
+    // The graphicsLayer uses transformOrigin (0,0), i.e. the map's top-left corner.
+    // If the displayed rotation (e.g. compass) differs from the stored one while the
+    // offset is static, the map would spin around that corner. This re-derives the
+    // offset so that the map point under rotationAnchor stays fixed instead.
+    // When currentRotation == rotation it returns `offset` unchanged.
+    val pivotedOffset = run {
+        val delta = (currentRotation - rotation) * PI / 180.0
+        if (delta == 0.0) {
+            offset
+        } else {
+            val c = cos(delta).toFloat()
+            val s = sin(delta).toFloat()
+            val ax = rotationAnchor.x - offset.x
+            val ay = rotationAnchor.y - offset.y
+            Offset(
+                rotationAnchor.x - (ax * c - ay * s),
+                rotationAnchor.y - (ax * s + ay * c)
+            )
+        }
+    }
+
     val calculatedActiveOffset = if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && !isReCentering && currentLocation != null && georeference != null && containerSize.width > 0) {
-        // FIX: Only auto-center if the location is INSIDE the map bounds
-        val isInside = currentLocation!!.latitude <= georeference.north && 
-                       currentLocation!!.latitude >= georeference.south &&
-                       currentLocation!!.longitude <= georeference.east && 
-                       currentLocation!!.longitude >= georeference.west
+        // Only auto-center if the location is INSIDE the (possibly rotated) map
+        val isInside = isLocationOnMap(currentLocation!!, georeference)
 
         if (isInside) {
             val targetX = containerSize.width / 2f
@@ -482,10 +511,10 @@ fun InteractiveMap(
 
             Offset(targetX - rx, targetY - ry)
         } else {
-            offset // Keep current offset if location is off-map
+            pivotedOffset // Location is off-map: keep the view, rotate around the anchor
         }
     } else {
-        offset
+        pivotedOffset
     }
 
     val latestActiveOffset by rememberUpdatedState(calculatedActiveOffset)
@@ -499,12 +528,9 @@ fun InteractiveMap(
             return
         }
 
-        val isInside = loc.latitude <= geo.north && 
-                       loc.latitude >= geo.south &&
-                       loc.longitude <= geo.east && 
-                       loc.longitude >= geo.west
-
-        if (!isInside) {
+        if (!isLocationOnMap(loc, geo)) {
+            // Keep the currently displayed view; the compass rotation then pivots
+            // around rotationAnchor (see pivotedOffset) instead of the map corner.
             viewModel.setTrackingSuspended(false)
             return
         }
@@ -637,7 +663,7 @@ fun InteractiveMap(
                     }
 
                     // CRITICAL FIX: Synchronize states BEFORE suspending tracking
-                    if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && (pan != Offset.Zero || zoom != 1f)) {
+                    if ((gpsMode == GpsMode.FOLLOW || gpsMode == GpsMode.COMPASS_ONLY || gpsMode == GpsMode.FREE) && !isTrackingSuspended && (pan != Offset.Zero || zoom != 1f || (rotate != 0f && gpsMode != GpsMode.FREE))) {
                         offset = latestActiveOffset
                         rotation = latestRotation
                         viewModel.setTrackingSuspended(true)
@@ -745,7 +771,7 @@ fun InteractiveMap(
             }
 
             // 3. GPS DOT
-            if (georeference != null && currentLocation != null && gpsMode != GpsMode.COMPASS_ONLY) {
+            if (georeference != null && currentLocation != null && gpsMode != GpsMode.COMPASS_ONLY && gpsMode != GpsMode.HIDDEN) {
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(baseDotX.roundToInt(), baseDotY.roundToInt()) }
@@ -1023,7 +1049,7 @@ fun InteractiveMap(
         }
 
         // OFF-MAP INDICATOR
-        dynamicNavInfo?.let { info ->
+        dynamicNavInfo?.takeIf { gpsMode != GpsMode.HIDDEN }?.let { info ->
             OffMapIndicator(
                 bearing = info.bearing,
                 distanceText = viewModel.formatDistance(info.distance),
@@ -1117,6 +1143,27 @@ fun GpxMenuFab(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDeleteWarning by remember { mutableStateOf(false) }
+    var showStopDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    // Android 13+: ask for the notification permission so the recording notification is visible.
+    // Recording starts regardless of the answer (without it the notification is just hidden).
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        viewModel.startRecording()
+    }
+
+    fun startRecordingWithPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            viewModel.startRecording()
+        }
+    }
 
     val isRecording by viewModel.isRecording.collectAsState()
     val showRecordedTrack by viewModel.showRecordedTrack.collectAsState()
@@ -1145,8 +1192,9 @@ fun GpxMenuFab(
                 onClick = {
                     if (isRecording) {
                         viewModel.stopRecording()
+                        showStopDialog = true
                     } else {
-                        viewModel.startRecording()
+                        startRecordingWithPermission()
                     }
                     expanded = false
                 },
@@ -1208,6 +1256,30 @@ fun GpxMenuFab(
                 leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) }
             )
         }
+    }
+
+    // After stopping: save now (finished) or later (only paused, may resume)
+    if (showStopDialog) {
+        AlertDialog(
+            onDismissRequest = { showStopDialog = false },
+            title = { Text(stringResource(R.string.recording_stopped_title)) },
+            text = { Text(stringResource(R.string.recording_stopped_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showStopDialog = false
+                        onExportClick()
+                    }
+                ) {
+                    Text(stringResource(R.string.save_now))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStopDialog = false }) {
+                    Text(stringResource(R.string.save_later))
+                }
+            }
+        )
     }
 
     if (showDeleteWarning) {
@@ -1358,6 +1430,12 @@ fun getMapPercentages(
     val percentY = ((geo.north - geo.south) / 2.0 - rotDLat) / (geo.north - geo.south)
 
     return Pair(percentX.toFloat(), percentY.toFloat())
+}
+
+/** True if the location lies inside the (possibly rotated) map image. */
+fun isLocationOnMap(location: android.location.Location, geo: MapGeoreference): Boolean {
+    val (px, py) = getMapPercentages(location, geo)
+    return px in 0f..1f && py in 0f..1f
 }
 
 fun getGeoFromPercentages(
