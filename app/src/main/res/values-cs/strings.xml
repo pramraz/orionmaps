@@ -48,7 +48,9 @@
     <string name="gps_mode_follow">Poloha a kompas</string>
     <string name="toggle_gesture_mode">Přepnout režim gest</string>
     <string name="version_label">Verze: %1$s (build %2$d)</string>
-    <string name="usage_warning">Aplikace je určena pro tréninkové a výukové účely, nepoužívejte ji, pokud je to na sportovní akci zakázáno (např. OB závody).</string>
+    <string name="usage_warning">Aplikace je určena pro tréninkové, výukové a volnočasové účely. Nepoužívejte ji, pokud je to na sportovní akci zakázáno.</string>
+    <string name="about_app">O aplikaci</string>
+    <string name="open_in_google_play">Zobrazit v Google Play</string>
 
     <!-- Dialog po zastavení nahrávání a notifikace -->
     <string name="recording_stopped_title">Nahrávání zastaveno</string>

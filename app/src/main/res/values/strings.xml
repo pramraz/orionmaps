@@ -48,7 +48,9 @@
     <string name="gps_mode_follow">Location and compass</string>
     <string name="toggle_gesture_mode">Toggle Gesture Mode</string>
     <string name="version_label">Version: %1$s (build %2$d)</string>
-    <string name="usage_warning">The application is intended for training and educational purposes, do not use it if it is prohibited at a sports event (e.g. orienteering races).</string>
+    <string name="usage_warning">The application is intended for training, educational, and leisure purposes. Do not use it if prohibited at a sports event.</string>
+    <string name="about_app">About app</string>
+    <string name="open_in_google_play">View in Google Play</string>
 
     <!-- Track recording dialog & notification -->
     <string name="recording_stopped_title">Recording stopped</string>

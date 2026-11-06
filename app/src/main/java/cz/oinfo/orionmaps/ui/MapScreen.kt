@@ -77,6 +77,7 @@ fun MapScreen(
     var showRecentMapsDialog by remember { mutableStateOf(false) }
     var showDemoMapsDialog by remember { mutableStateOf(false) }
     var showAppSettingsDialog by remember { mutableStateOf(false) }
+    var showAboutAppDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -224,13 +225,14 @@ fun MapScreen(
                         }
                     }
 
-                    // Version and Warning Info at Bottom
-                    Column(
+                    // Version Info at Bottom
+                    Row(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .windowInsetsPadding(WindowInsets.navigationBars)
                             .padding(bottom = 16.dp, start = 32.dp, end = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
                         Text(
                             text = stringResource(
@@ -241,13 +243,18 @@ fun MapScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.5f)
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.usage_warning),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.5f),
-                            textAlign = TextAlign.Center
-                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        IconButton(
+                            onClick = { showAboutAppDialog = true },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = stringResource(R.string.about_app),
+                                tint = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -261,6 +268,7 @@ fun MapScreen(
                     onOpenNewPdfMap = { launcher.launch(arrayOf("application/pdf")) },
                     onOpenNewKmzMap = { launcher.launch(arrayOf("application/vnd.google-earth.kmz")) },
                     onOpenAppSettings = { showAppSettingsDialog = true },
+                    onOpenAboutApp = { showAboutAppDialog = true },
                     viewModel = viewModel
                 )
             }
@@ -350,6 +358,13 @@ fun MapScreen(
                 viewModel = viewModel
             )
         }
+
+        if (showAboutAppDialog) {
+            AboutAppDialog(
+                onDismiss = { showAboutAppDialog = false },
+                viewModel = viewModel
+            )
+        }
     }
 }
 
@@ -360,6 +375,7 @@ fun InteractiveMap(
     onOpenNewPdfMap: () -> Unit,
     onOpenNewKmzMap: () -> Unit,
     onOpenAppSettings: () -> Unit,
+    onOpenAboutApp: () -> Unit,
     viewModel: MapViewModel
 ) {
     var scale by remember { mutableStateOf(1f) }
@@ -938,6 +954,14 @@ fun InteractiveMap(
                         },
                         leadingIcon = { Icon(Icons.Default.SettingsSuggest, contentDescription = null) }
                     )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.about_app)) },
+                        onClick = {
+                            onOpenAboutApp()
+                            showSettingsMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
+                    )
                 }
             }
 
@@ -1388,6 +1412,89 @@ fun AppSettingsDialog(
                         onCheckedChange = { viewModel.setRecordingEnabled(it) }
                     )
                 }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AboutAppDialog(
+    onDismiss: () -> Unit,
+    viewModel: MapViewModel
+) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Image(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                )
+
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                Text(
+                    text = stringResource(
+                        R.string.version_label,
+                        viewModel.getVersionName(),
+                        viewModel.getVersionCode()
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Button(
+                    onClick = {
+                        try {
+                            uriHandler.openUri("https://play.google.com/store/apps/details?id=cz.oinfo.orionmaps")
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Shop,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.open_in_google_play)
+                    )
+                }
+
+                HorizontalDivider()
+
+                Text(
+                    text = stringResource(R.string.usage_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
 
                 TextButton(
                     onClick = onDismiss,
